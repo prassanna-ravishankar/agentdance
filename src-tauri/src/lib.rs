@@ -1,0 +1,362 @@
+mod mcp_host;
+mod memory;
+mod process_manager;
+
+use mcp_host::{McpRegistry, SharedMcpRegistry, McpTool};
+use memory::{MemoryManager, SharedMemoryManager, Finding};
+use process_manager::{ProcessManager, SharedProcessManager};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::process::Command;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_id() -> u64 {
+    REQUEST_ID.fetch_add(1, Ordering::SeqCst)
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AgentPlanTask {
+    id: String,
+    title: String,
+    status: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AgentPlan {
+    id: String,
+    agent_id: String,
+    title: String,
+    tasks: Vec<AgentPlanTask>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AgentUpdate {
+    id: String,
+    name: Option<String>,
+    status: String,
+    plan: Option<AgentPlan>,
+    fork_of: Option<String>,
+    message: Option<String>,
+}
+
+#[tauri::command]
+async fn connect_agent(
+    handle: AppHandle,
+    name: String,
+    command: String,
+    args: Vec<String>,
+    directory: Option<String>,
+    state: tauri::State<'_, SharedProcessManager>
+) -> Result<String, String> {
+    let mut cmd = Command::new(&command);
+    cmd.args(&args);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    cmd.stdin(Stdio::piped());
+
+    if let Some(ref dir) = directory {
+        cmd.current_dir(dir);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn agent process: {}", e))?;
+
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+    let mut stdin = child.stdin.take().ok_or("Failed to capture stdin")?;
+
+    let agent_id = format!("agent-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    let cwd = directory.unwrap_or_else(|| ".".to_string());
+
+    let mut reader = BufReader::new(stdout).lines();
+
+    // ── Step 1: send initialize, wait for its response ──────────────────────
+    let init_id = next_id();
+    let init_str = serde_json::to_string(&serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": { "protocolVersion": 1, "clientCapabilities": {} },
+        "id": init_id
+    })).unwrap();
+    let _ = handle.emit("agent-log", serde_json::json!({"agent_id": agent_id, "stream": "stdin", "line": init_str}));
+    stdin.write_all(format!("{}\n", init_str).as_bytes()).await
+        .map_err(|e| format!("Failed to send initialize: {}", e))?;
+
+    loop {
+        match reader.next_line().await {
+            Ok(Some(line)) => {
+                let _ = handle.emit("agent-log", serde_json::json!({"agent_id": agent_id, "stream": "stdout", "line": line}));
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                    if json.get("id").and_then(|v| v.as_u64()) == Some(init_id) {
+                        break; // got initialize response
+                    }
+                }
+            }
+            _ => return Err("Agent closed stdout during initialize".to_string()),
+        }
+    }
+
+    // ── Step 2: send newSession, wait for its response ───────────────────────
+    let ns_id = next_id();
+    let ns_str = serde_json::to_string(&serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "session/new",
+        "params": { "cwd": cwd, "mcpServers": [] },
+        "id": ns_id
+    })).unwrap();
+    let _ = handle.emit("agent-log", serde_json::json!({"agent_id": agent_id, "stream": "stdin", "line": ns_str}));
+    stdin.write_all(format!("{}\n", ns_str).as_bytes()).await
+        .map_err(|e| format!("Failed to send newSession: {}", e))?;
+
+    let session_id = loop {
+        match reader.next_line().await {
+            Ok(Some(line)) => {
+                let _ = handle.emit("agent-log", serde_json::json!({"agent_id": agent_id, "stream": "stdout", "line": line}));
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                    if json.get("id").and_then(|v| v.as_u64()) == Some(ns_id) {
+                        match json.get("result").and_then(|r| r.get("sessionId")).and_then(|s| s.as_str()) {
+                            Some(sid) => break sid.to_string(),
+                            None => return Err(format!("newSession failed: {}", line)),
+                        }
+                    }
+                }
+            }
+            _ => return Err("Agent closed stdout during newSession".to_string()),
+        }
+    };
+
+    {
+        let mut mgr = state.lock().await;
+        mgr.register_session_id(agent_id.clone(), session_id);
+        mgr.register_stdin(agent_id.clone(), stdin);
+    }
+
+    let _ = handle.emit("agent-update", AgentUpdate {
+        id: agent_id.clone(),
+        name: Some(name),
+        status: "idle".to_string(),
+        plan: None,
+        fork_of: None,
+        message: None,
+    });
+
+    let id_clone = agent_id.clone();
+    let handle_clone = handle.clone();
+    let _state_clone = state.inner().clone();
+
+    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
+    let id_for_stderr = agent_id.clone();
+    let handle_for_stderr = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut err_reader = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = err_reader.next_line().await {
+            let _ = handle_for_stderr.emit("agent-log", serde_json::json!({
+                "agent_id": id_for_stderr,
+                "stream": "stderr",
+                "line": line
+            }));
+        }
+    });
+
+    tauri::async_runtime::spawn(async move {
+        let mut message_buf = String::new();
+
+        while let Ok(Some(line)) = reader.next_line().await {
+            let _ = handle_clone.emit("agent-log", serde_json::json!({
+                "agent_id": id_clone,
+                "stream": "stdout",
+                "line": line
+            }));
+
+            let json: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            // Response to a prompt request
+            if json.get("id").is_some() {
+                if json.get("result").and_then(|r| r.get("stopReason")).is_some() {
+                    // Schedule idle after 200ms — enough time for any trailing chunks
+                    let h = handle_clone.clone();
+                    let id = id_clone.clone();
+                    let msg = if message_buf.is_empty() { None } else { Some(message_buf.clone()) };
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        let _ = h.emit("agent-update", AgentUpdate {
+                            id,
+                            name: None,
+                            status: "idle".to_string(),
+                            plan: None,
+                            fork_of: None,
+                            message: msg,
+                        });
+                    });
+                }
+                continue;
+            }
+
+            // Notification: {method:"session/update", params:{sessionId, update:{sessionUpdate,...}}}
+            if json.get("method").and_then(|m| m.as_str()) == Some("session/update") {
+                let update = json.get("params").and_then(|p| p.get("update"));
+
+                let session_update_type = update
+                    .and_then(|u| u.get("sessionUpdate"))
+                    .and_then(|s| s.as_str());
+
+                match session_update_type {
+                    Some("plan") => {
+                        if let Some(entries) = update.and_then(|u| u.get("entries")).and_then(|e| e.as_array()) {
+                            let tasks: Vec<AgentPlanTask> = entries.iter().enumerate().map(|(i, entry)| {
+                                let content = entry.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+                                let raw_status = entry.get("status").and_then(|s| s.as_str()).unwrap_or("pending");
+                                let status = match raw_status {
+                                    "in_progress" => "running",
+                                    other => other,
+                                }.to_string();
+                                AgentPlanTask { id: format!("t{}", i), title: content, status }
+                            }).collect();
+
+                            let _ = handle_clone.emit("agent-update", AgentUpdate {
+                                id: id_clone.clone(),
+                                name: None,
+                                status: "busy".to_string(),
+                                plan: Some(AgentPlan {
+                                    id: format!("p-{}", id_clone),
+                                    agent_id: id_clone.clone(),
+                                    title: "Agent Plan".to_string(),
+                                    tasks,
+                                }),
+                                fork_of: None,
+                                message: None,
+                            });
+                        }
+                    }
+                    Some("agent_message_chunk") => {
+                        let text = update
+                            .and_then(|u| u.get("content"))
+                            .and_then(|c| c.get("text"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("");
+                        message_buf.push_str(text);
+                        let _ = handle_clone.emit("agent-update", AgentUpdate {
+                            id: id_clone.clone(),
+                            name: None,
+                            status: "busy".to_string(),
+                            plan: None,
+                            fork_of: None,
+                            message: Some(message_buf.clone()),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
+
+    Ok(agent_id)
+}
+
+#[tauri::command]
+async fn send_agent_input(
+    handle: AppHandle,
+    state: tauri::State<'_, SharedProcessManager>,
+    agent_id: String,
+    message: String
+) -> Result<(), String> {
+    let session_id = {
+        let manager = state.lock().await;
+        manager.get_session_id(&agent_id).cloned()
+    };
+
+    let session_id = session_id.ok_or_else(|| format!("No session ID for agent: {}", agent_id))?;
+
+    let req_id = next_id();
+    let json_rpc = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "session/prompt",
+        "params": {
+            "sessionId": session_id,
+            "prompt": [{ "type": "text", "text": message }]
+        },
+        "id": req_id
+    });
+
+    let message_string = serde_json::to_string(&json_rpc).map_err(|e| e.to_string())?;
+    let _ = handle.emit("agent-log", serde_json::json!({"agent_id": agent_id, "stream": "stdin", "line": message_string}));
+    let mut manager = state.lock().await;
+    manager.send_input(agent_id, message_string).await
+}
+
+#[tauri::command]
+async fn commit_finding(state: tauri::State<'_, SharedMemoryManager>, agent_id: String, content: String) -> Result<i64, String> {
+    let manager = state.lock().await;
+    manager.commit_finding(Finding {
+        id: None,
+        agent_id,
+        content,
+        timestamp: "".to_string(),
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_tools(state: tauri::State<'_, SharedMcpRegistry>) -> Result<Vec<McpTool>, String> {
+    let registry = state.lock().await;
+    Ok(registry.list_all_tools())
+}
+
+#[tauri::command]
+fn fork_session(handle: AppHandle, agent_id: String) {
+    let fork_id = format!("{}-fork-{}", agent_id, &uuid::Uuid::new_v4().to_string()[..4]);
+    let update = AgentUpdate {
+        id: fork_id.clone(),
+        name: None,
+        status: "busy".to_string(),
+        plan: Some(AgentPlan {
+            id: format!("p-{}", fork_id),
+            agent_id: fork_id.clone(),
+            title: "Forked Trajectory".to_string(),
+            tasks: vec![
+                AgentPlanTask { id: "t1".to_string(), title: "Explore alternative approach A".to_string(), status: "running".to_string() },
+                AgentPlanTask { id: "t2".to_string(), title: "Compare with original baseline".to_string(), status: "pending".to_string() },
+            ],
+        }),
+        fork_of: Some(agent_id),
+        message: None,
+    };
+    handle.emit("agent-update", update).unwrap();
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_log::Builder::default().build())
+        .setup(|app| {
+            let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("./data"));
+            if !app_data_dir.exists() {
+                std::fs::create_dir_all(&app_data_dir).unwrap();
+            }
+
+            let memory_manager = Arc::new(Mutex::new(MemoryManager::new(app_data_dir).expect("Failed to init memory")));
+            let mcp_registry = Arc::new(Mutex::new(McpRegistry::new()));
+            let process_manager = Arc::new(Mutex::new(ProcessManager::new()));
+
+            app.manage(memory_manager);
+            app.manage(mcp_registry);
+            app.manage(process_manager);
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            fork_session,
+            commit_finding,
+            list_tools,
+            connect_agent,
+            send_agent_input
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
