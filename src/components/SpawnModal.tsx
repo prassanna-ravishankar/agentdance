@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Terminal, Folder, Zap } from "lucide-react";
 import { motion } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
 
 interface SpawnModalProps {
   onClose: () => void;
@@ -66,17 +67,27 @@ export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
 
           <div className="space-y-3">
             <label className="text-[11px] font-bold text-white/30 uppercase tracking-widest ml-1">Working Substrate (Directory)</label>
-            <div className="relative group">
-              <Folder className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-blue-400 transition-colors" size={18} />
-              <input 
+            <div className="relative flex items-center group">
+              <Folder className="absolute left-4 text-white/20 group-focus-within:text-blue-400 transition-colors" size={18} />
+              <input
                 value={directory}
                 onChange={(e) => setDirectory(e.target.value)}
                 placeholder="/absolute/path/to/project"
-                className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all"
+                className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl py-3.5 pl-12 pr-24 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all"
                 required
               />
+              <button
+                type="button"
+                onClick={async () => {
+                  const path = await invoke<string | null>('pick_directory');
+                  if (path) setDirectory(path);
+                }}
+                className="absolute right-2 px-3 py-1.5 text-[11px] font-semibold text-white/50 hover:text-white bg-white/[0.05] hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+              >
+                Browse
+              </button>
             </div>
-            <p className="text-[10px] text-white/20 ml-1">Enter the absolute path where the agent will operate.</p>
+            <p className="text-[10px] text-white/20 ml-1">Enter the absolute path or use Browse to pick a folder.</p>
           </div>
 
           <button 

@@ -146,9 +146,11 @@ const handleFork = async (agentId: string) => {
   };
 
   const handleUpdatePlan = (agentId: string, tasks: AgentPlanTask[]) => {
-    setAgents(prev => prev.map(a => 
+    setAgents(prev => prev.map(a =>
       a.id === agentId ? { ...a, plan: a.plan ? { ...a.plan, tasks } : a.plan } : a
     ));
+    const taskList = tasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n');
+    handleSendCommand(agentId, `Updated plan — please follow this task order:\n${taskList}`);
     setInspectingAgentId(null);
   };
 

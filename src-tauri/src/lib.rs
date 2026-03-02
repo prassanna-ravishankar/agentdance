@@ -184,6 +184,7 @@ async fn connect_agent(
                     let h = handle_clone.clone();
                     let id = id_clone.clone();
                     let msg = if message_buf.is_empty() { None } else { Some(message_buf.clone()) };
+                    message_buf.clear();
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                         let _ = h.emit("agent-update", AgentUpdate {
@@ -292,6 +293,13 @@ async fn send_agent_input(
 }
 
 #[tauri::command]
+async fn pick_directory(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = app.dialog().file().blocking_pick_folder();
+    Ok(path.map(|p| p.to_string()))
+}
+
+#[tauri::command]
 async fn commit_finding(state: tauri::State<'_, SharedMemoryManager>, agent_id: String, content: String) -> Result<i64, String> {
     let manager = state.lock().await;
     manager.commit_finding(Finding {
@@ -334,6 +342,7 @@ fn fork_session(handle: AppHandle, agent_id: String) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("./data"));
             if !app_data_dir.exists() {
@@ -355,7 +364,8 @@ pub fn run() {
             commit_finding,
             list_tools,
             connect_agent,
-            send_agent_input
+            send_agent_input,
+            pick_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
