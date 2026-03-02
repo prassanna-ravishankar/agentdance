@@ -146,7 +146,7 @@ async fn connect_agent(
 
     let id_clone = agent_id.clone();
     let handle_clone = handle.clone();
-    let _state_clone = state.inner().clone();
+    let state_clone = state.inner().clone();
 
     let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
     let id_for_stderr = agent_id.clone();
@@ -164,6 +164,7 @@ async fn connect_agent(
 
     tauri::async_runtime::spawn(async move {
         let mut message_buf = String::new();
+        let pm = state_clone;
 
         while let Ok(Some(line)) = reader.next_line().await {
             let _ = handle_clone.emit("agent-log", serde_json::json!({
@@ -197,6 +198,23 @@ async fn connect_agent(
                         });
                     });
                 }
+                continue;
+            }
+
+            // Permission request: auto-approve with allow_always
+            if json.get("method").and_then(|m| m.as_str()) == Some("session/request_permission") {
+                let req_id = json.get("id").cloned().unwrap_or(serde_json::Value::Null);
+                let response = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": { "optionId": "allow_always" }
+                });
+                let response_str = serde_json::to_string(&response).unwrap();
+                let _ = handle_clone.emit("agent-log", serde_json::json!({
+                    "agent_id": id_clone, "stream": "stdin", "line": response_str
+                }));
+                let mut mgr = pm.lock().await;
+                let _ = mgr.send_input(id_clone.clone(), response_str).await;
                 continue;
             }
 
@@ -340,9 +358,14 @@ fn fork_session(handle: AppHandle, agent_id: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    #[cfg(debug_assertions)]
+    { builder = builder.plugin(tauri_plugin_webdriver::init()); }
+
+    builder
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("./data"));
             if !app_data_dir.exists() {

@@ -1,37 +1,41 @@
 import React, { useState } from "react";
-import { X, Terminal, Folder, Zap } from "lucide-react";
+import { X, Terminal, Folder, Zap, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 
 interface SpawnModalProps {
   onClose: () => void;
-  onConnect: (name: string, command: string, args: string[], directory: string) => void;
+  onConnect: (name: string, command: string, args: string[], directory: string) => Promise<void>;
 }
 
 export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
   const [directory, setDirectory] = useState("");
   const [selectedAgent, setSelectedAgent] = useState("claude");
+  const [loading, setLoading] = useState(false);
 
   const agents = [
     { id: "claude", name: "Claude Code", command: "npx", args: ["@zed-industries/claude-agent-acp"], icon: <Zap className="text-blue-400" size={18} /> },
     { id: "opencode", name: "OpenCode", command: "opencode", args: ["acp"], icon: <Terminal className="text-emerald-400" size={18} /> }
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const agent = agents.find(a => a.id === selectedAgent);
     if (agent && directory) {
-      onConnect(agent.name, agent.command, agent.args, directory);
+      setLoading(true);
+      await onConnect(agent.name, agent.command, agent.args, directory);
+      setLoading(false);
     }
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
     >
-      <motion.div 
+      <motion.div
+        data-testid="spawn-modal"
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
@@ -70,6 +74,7 @@ export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
             <div className="relative flex items-center group">
               <Folder className="absolute left-4 text-white/20 group-focus-within:text-blue-400 transition-colors" size={18} />
               <input
+                data-testid="spawn-directory-input"
                 value={directory}
                 onChange={(e) => setDirectory(e.target.value)}
                 placeholder="/absolute/path/to/project"
@@ -90,11 +95,14 @@ export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
             <p className="text-[10px] text-white/20 ml-1">Enter the absolute path or use Browse to pick a folder.</p>
           </div>
 
-          <button 
+          <button
+            data-testid="spawn-submit"
             type="submit"
-            className="w-full py-4 bg-white text-black font-bold rounded-2xl hover:bg-blue-50 transition-all shadow-lg hover:shadow-white/10 active:scale-[0.98]"
+            disabled={loading}
+            className="w-full py-4 bg-white text-black font-bold rounded-2xl hover:bg-blue-50 transition-all shadow-lg hover:shadow-white/10 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white flex items-center justify-center gap-2"
           >
-            Initiate Dance
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            {loading ? "Initiating…" : "Initiate Dance"}
           </button>
         </form>
       </motion.div>

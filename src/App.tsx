@@ -177,6 +177,7 @@ const handleFork = async (agentId: string) => {
           
           <div className="flex items-center gap-3">
             <button
+              data-testid="spawn-open-btn"
               onClick={() => setIsSpawnModalOpen(true)}
               className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.03] border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-300 text-white/60 hover:text-white group hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]"
             >
