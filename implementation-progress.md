@@ -21,6 +21,9 @@ Goal: a live-updating desktop UI connected to a real agent.
 - Agent disconnect detection (dead process looks frozen-idle)
 - Message buffer doesn't reset between turns (second reply appends to first)
 
+**Done (post-Phase 1 correctness):**
+- ✅ Auto-approve `session/request_permission`: backend detects the JSON-RPC permission request notification, immediately responds with `allow_always`, preventing agents from silently stalling mid-task
+
 ---
 
 ## Phase 2: The Duet 🔄 In Progress
@@ -43,6 +46,8 @@ Goal: multi-agent workspace with steering and forking.
 - ✅ Reset message buffer between prompts (`message_buf.clear()` after clone in stopReason branch)
 - ✅ Send plan edits as a steering prompt on "Resume Dance" (`handleUpdatePlan` calls `handleSendCommand`)
 - ✅ Native directory picker in SpawnModal (`tauri-plugin-dialog` + Browse button)
+- ✅ Dynamic waypoints: add blank row (auto-focused), delete with X, reorder with up/down chevrons, empty-state ghost row
+- ✅ Structured `[WAYPOINT UPDATE]` steering prompt on Resume Dance (semantic replacement, not suggestion)
 
 **Next up (Tier 2 — medium):**
 - Agent disconnect detection + `disconnected` status

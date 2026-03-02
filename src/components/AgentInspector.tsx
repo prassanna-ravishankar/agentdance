@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Agent, AgentPlanTask } from "../lib/types";
-import { X, Play, Pause, RotateCcw, Plus, GitFork, Send } from "lucide-react";
+import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AgentInspectorProps {
@@ -16,11 +16,37 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
     agent.plan?.tasks.map(t => ({ ...t })) || []
   );
   const [command, setCommand] = useState("");
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (focusIdx !== null && inputRefs.current[focusIdx]) {
+      inputRefs.current[focusIdx]!.focus();
+      setFocusIdx(null);
+    }
+  }, [focusIdx, editedTasks.length]);
 
   const handleTaskChange = (index: number, newTitle: string) => {
     const next = [...editedTasks];
     next[index].title = newTitle;
     setEditedTasks(next);
+  };
+
+  const handleAddWaypoint = () => {
+    setEditedTasks(prev => [...prev, { id: `w-${Date.now()}`, title: "", status: "pending" }]);
+    setFocusIdx(editedTasks.length);
+  };
+
+  const handleDeleteWaypoint = (i: number) => {
+    setEditedTasks(prev => prev.filter((_, j) => j !== i));
+  };
+
+  const swap = (a: number, b: number) => {
+    setEditedTasks(prev => {
+      const next = [...prev];
+      [next[a], next[b]] = [next[b], next[a]];
+      return next;
+    });
   };
 
   const handleSend = () => {
@@ -65,21 +91,27 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
           <div className="space-y-4">
             <h3 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] ml-1">Internal Mental Model</h3>
             <div className="space-y-3">
+              {editedTasks.length === 0 && (
+                <div className="text-white/20 text-sm text-center py-4">No waypoints — add one below</div>
+              )}
               {editedTasks.map((task, i) => (
-                <div key={task.id} className="flex items-center gap-4 bg-black/40 p-4 rounded-2xl border border-white/[0.05] group hover:border-white/10 transition-colors focus-within:border-blue-500/30 focus-within:ring-1 focus-within:ring-blue-500/30">
-                  <span className="text-[10px] font-mono text-white/20 w-4 tracking-wider">0{i + 1}</span>
-                  <input 
+                <div key={task.id} className="flex items-center gap-3 bg-black/40 p-4 rounded-2xl border border-white/[0.05] group hover:border-white/10 transition-colors focus-within:border-blue-500/30 focus-within:ring-1 focus-within:ring-blue-500/30">
+                  <span className="text-[10px] font-mono text-white/20 w-4 tracking-wider shrink-0">0{i + 1}</span>
+                  <input
+                    ref={el => { inputRefs.current[i] = el; }}
                     value={task.title}
                     onChange={(e) => handleTaskChange(i, e.target.value)}
                     className="flex-1 bg-transparent border-none focus:ring-0 text-[14px] font-medium text-white/90 outline-none placeholder:text-white/20"
                     placeholder="Describe objective..."
                   />
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                    <button className="p-1.5 hover:bg-white/10 rounded-lg text-white/30 hover:text-rose-400 transition-colors"><RotateCcw size={14} /></button>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
+                    <button onClick={() => swap(i, i - 1)} disabled={i === 0} className="p-1 hover:bg-white/10 rounded-lg text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"><ChevronUp size={12} /></button>
+                    <button onClick={() => swap(i, i + 1)} disabled={i === editedTasks.length - 1} className="p-1 hover:bg-white/10 rounded-lg text-white/30 hover:text-white/70 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"><ChevronDown size={12} /></button>
+                    <button onClick={() => handleDeleteWaypoint(i)} className="p-1.5 hover:bg-white/10 rounded-lg text-white/30 hover:text-rose-400 transition-colors"><X size={14} /></button>
                   </div>
                 </div>
               ))}
-              <button className="w-full py-4 border border-dashed border-white/10 rounded-2xl text-[12px] text-white/40 font-medium hover:border-blue-500/50 hover:text-blue-400 transition-all hover:bg-blue-500/5 flex items-center justify-center gap-2">
+              <button onClick={handleAddWaypoint} className="w-full py-4 border border-dashed border-white/10 rounded-2xl text-[12px] text-white/40 font-medium hover:border-blue-500/50 hover:text-blue-400 transition-all hover:bg-blue-500/5 flex items-center justify-center gap-2">
                 <Plus size={14} /> Add dynamic waypoint
               </button>
             </div>
