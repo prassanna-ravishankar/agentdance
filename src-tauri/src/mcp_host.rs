@@ -27,6 +27,7 @@ impl McpRegistry {
         }
     }
 
+    #[allow(dead_code)]
     pub fn register_server(&mut self, manifest: McpServerManifest) {
         self.servers.insert(manifest.name.clone(), manifest);
     }

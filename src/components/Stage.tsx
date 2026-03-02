@@ -1,13 +1,9 @@
 import React from "react";
-import { Agent, AgentPlanTask } from "../lib/types";
+import { Agent, AgentPlan, AgentPlanTask } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Circle, Loader2, AlertCircle } from "lucide-react";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from "../lib/cn";
+import { getPlanProgress } from "../lib/planUtils";
 
 interface StageProps {
   agents: Agent[];
@@ -59,24 +55,7 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
                     <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Active Trajectory</span>
                     <span className="text-[10px] text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20 font-medium">{agent.plan.title}</span>
                   </div>
-                  {(() => {
-                    let total = 0, completed = 0, active: AgentPlanTask | null = null;
-                    for (const t of agent.plan.tasks) {
-                      total++;
-                      if (t.status === 'completed') completed++;
-                      if (!active && (t.status === 'running' || t.status === 'pending')) active = t;
-                    }
-                    return (
-                      <div className="space-y-3">
-                        <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500/60 transition-all duration-500"
-                               style={{ width: `${total ? (completed / total) * 100 : 0}%` }} />
-                        </div>
-                        {active && <TaskItem task={active} />}
-                        <p className="text-[10px] text-white/20 font-mono">{completed} / {total} waypoints</p>
-                      </div>
-                    );
-                  })()}
+                  <PlanProgress plan={agent.plan} />
                 </div>
               ) : agent.message ? (
                 <div className="h-full overflow-auto">
@@ -128,6 +107,20 @@ function TaskItem({ task }: { task: AgentPlanTask }) {
           {task.title}
         </p>
       </div>
+    </div>
+  );
+}
+
+function PlanProgress({ plan }: { plan: AgentPlan }) {
+  const { total, completed, active } = getPlanProgress(plan);
+  return (
+    <div className="space-y-3">
+      <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
+        <div className="h-full bg-blue-500/60 transition-all duration-500"
+             style={{ width: `${total ? (completed / total) * 100 : 0}%` }} />
+      </div>
+      {active && <TaskItem task={active} />}
+      <p className="text-[10px] text-white/20 font-mono">{completed} / {total} waypoints</p>
     </div>
   );
 }

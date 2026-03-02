@@ -2,12 +2,7 @@ import React from "react";
 import { Agent } from "../lib/types";
 import { Terminal, Shield, Palette, Database } from "lucide-react";
 import { Logo } from "./Logo";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from "../lib/cn";
 
 interface SidebarProps {
   agents: Agent[];

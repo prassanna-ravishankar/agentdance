@@ -43,6 +43,7 @@ impl MemoryManager {
         Ok(conn.last_insert_rowid())
     }
 
+    #[allow(dead_code)]
     pub fn list_findings(&self) -> Result<Vec<Finding>> {
         let conn = Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare("SELECT id, agent_id, content, timestamp FROM findings ORDER BY timestamp DESC")?;
