@@ -20,6 +20,7 @@ export interface Agent {
   status: 'idle' | 'busy' | 'error';
   lastActive: string;
   plan?: AgentPlan;
+  pinnedWaypoints?: AgentPlanTask[];
   forkOf?: string;
   message?: string;
 }

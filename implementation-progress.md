@@ -48,6 +48,8 @@ Goal: multi-agent workspace with steering and forking.
 - ✅ Native directory picker in SpawnModal (`tauri-plugin-dialog` + Browse button)
 - ✅ Dynamic waypoints: add blank row (auto-focused), delete with X, reorder with up/down chevrons, empty-state ghost row
 - ✅ Structured `[WAYPOINT UPDATE]` steering prompt on Resume Dance (semantic replacement, not suggestion)
+- ✅ Compressed plan view on agent cards: progress bar + single active task + "N / M waypoints" counter (replaces full task wall)
+- ✅ Waypoint persistence: `pinnedWaypoints` field on Agent survives backend `agent-update` plan overwrites; inspector prefers user-authored waypoints on reopen with "· user-authored" badge
 
 **Next up (Tier 2 — medium):**
 - Agent disconnect detection + `disconnected` status

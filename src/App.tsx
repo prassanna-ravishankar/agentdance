@@ -147,7 +147,7 @@ const handleFork = async (agentId: string) => {
 
   const handleUpdatePlan = (agentId: string, tasks: AgentPlanTask[]) => {
     setAgents(prev => prev.map(a =>
-      a.id === agentId ? { ...a, plan: a.plan ? { ...a.plan, tasks } : a.plan } : a
+      a.id === agentId ? { ...a, plan: a.plan ? { ...a.plan, tasks } : a.plan, pinnedWaypoints: tasks } : a
     ));
     const taskList = tasks.map((t, i) => `${i + 1}. ${t.title}`).join('\n');
     handleSendCommand(agentId, `[WAYPOINT UPDATE] Discard your current plan. Your new waypoint sequence is:\n\n${taskList}\n\nBegin immediately with waypoint 1. Execute each in order.`);

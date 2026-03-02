@@ -14,7 +14,9 @@ interface AgentInspectorProps {
 
 export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCommand }: AgentInspectorProps) {
   const [editedTasks, setEditedTasks] = useState<AgentPlanTask[]>(
-    agent.plan?.tasks.map(t => ({ ...t })) || []
+    agent.pinnedWaypoints?.map(t => ({ ...t }))
+    ?? agent.plan?.tasks.map(t => ({ ...t }))
+    ?? []
   );
   const [command, setCommand] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -85,7 +87,12 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
         <div className="flex-1 overflow-auto p-7 space-y-8 relative z-10">
           {/* Internal mental model section */}
           <div className="space-y-4">
-            <h3 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] ml-1">Internal Mental Model</h3>
+            <h3 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] ml-1 flex items-center gap-2">
+              Internal Mental Model
+              {agent.pinnedWaypoints && (
+                <span className="text-blue-400/50 normal-case tracking-normal font-normal">· user-authored</span>
+              )}
+            </h3>
             <div className="space-y-3">
               {editedTasks.length === 0 && (
                 <div className="text-white/20 text-sm text-center py-4">No waypoints — add one below</div>
