@@ -39,10 +39,10 @@ Goal: multi-agent workspace with steering and forking.
 - No cross-agent routing or visual handoff tethers
 - SpawnModal uses a free-text path field instead of a native directory picker
 
-**Next up (Tier 1 — small):**
-- Reset message buffer between prompts
-- Send plan edits as a steering prompt on "Resume Dance"
-- Native directory picker in SpawnModal (`tauri-plugin-dialog`)
+**Done (Tier 1 — small):**
+- ✅ Reset message buffer between prompts (`message_buf.clear()` after clone in stopReason branch)
+- ✅ Send plan edits as a steering prompt on "Resume Dance" (`handleUpdatePlan` calls `handleSendCommand`)
+- ✅ Native directory picker in SpawnModal (`tauri-plugin-dialog` + Browse button)
 
 **Next up (Tier 2 — medium):**
 - Agent disconnect detection + `disconnected` status
