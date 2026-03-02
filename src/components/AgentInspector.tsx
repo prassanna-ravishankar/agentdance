@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
+import { flushSync } from "react-dom";
 import { Agent, AgentPlanTask } from "../lib/types";
 import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
@@ -16,15 +17,7 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
     agent.plan?.tasks.map(t => ({ ...t })) || []
   );
   const [command, setCommand] = useState("");
-  const [focusIdx, setFocusIdx] = useState<number | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  useEffect(() => {
-    if (focusIdx !== null && inputRefs.current[focusIdx]) {
-      inputRefs.current[focusIdx]!.focus();
-      setFocusIdx(null);
-    }
-  }, [focusIdx, editedTasks.length]);
 
   const handleTaskChange = (index: number, newTitle: string) => {
     const next = [...editedTasks];
@@ -33,8 +26,11 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
   };
 
   const handleAddWaypoint = () => {
-    setEditedTasks(prev => [...prev, { id: `w-${Date.now()}`, title: "", status: "pending" }]);
-    setFocusIdx(editedTasks.length);
+    const newIndex = editedTasks.length;
+    flushSync(() => {
+      setEditedTasks(prev => [...prev, { id: `w-${Date.now()}`, title: "", status: "pending" }]);
+    });
+    inputRefs.current[newIndex]?.focus();
   };
 
   const handleDeleteWaypoint = (i: number) => {
