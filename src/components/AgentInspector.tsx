@@ -7,21 +7,25 @@ import { motion } from "framer-motion";
 
 interface AgentInspectorProps {
   agent: Agent;
+  allAgents: Agent[];
   onClose: () => void;
   onUpdatePlan: (agentId: string, tasks: AgentPlanTask[]) => void;
   onFork: (agentId: string) => void;
   onSendCommand: (agentId: string, message: string) => void;
   onStop: (agentId: string) => void;
   onSetOrchestrator: (agentId: string) => void;
+  onDelegate: (fromId: string, targetName: string, task: string) => void;
 }
 
-export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCommand, onStop, onSetOrchestrator }: AgentInspectorProps) {
+export function AgentInspector({ agent, allAgents, onClose, onUpdatePlan, onFork, onSendCommand, onStop, onSetOrchestrator, onDelegate }: AgentInspectorProps) {
   const [editedTasks, setEditedTasks] = useState<AgentPlanTask[]>(
     agent.pinnedWaypoints?.map(t => ({ ...t }))
     ?? agent.plan?.tasks.map(t => ({ ...t }))
     ?? []
   );
   const [command, setCommand] = useState("");
+  const [delegateTarget, setDelegateTarget] = useState("");
+  const [delegateTask, setDelegateTask] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const historyEndRef = useRef<HTMLDivElement>(null);
 
@@ -162,6 +166,48 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
                   </div>
                 ))}
                 <div ref={historyEndRef} />
+              </div>
+            </div>
+          )}
+
+          {/* Delegation panel (orchestrator only) */}
+          {agent.isOrchestrator && (
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-bold text-amber-400/80 uppercase tracking-[0.2em] ml-1 flex items-center gap-1.5">
+                <Crown size={10} /> Delegate Task
+              </h3>
+              <div className="space-y-3">
+                <select
+                  value={delegateTarget}
+                  onChange={e => setDelegateTarget(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-4 text-[13px] text-white/80 outline-none focus:border-amber-500/40 appearance-none"
+                >
+                  <option value="">Select target agent…</option>
+                  {allAgents.filter(a => a.id !== agent.id && a.status !== 'disconnected').map(a => (
+                    <option key={a.id} value={a.name}>{a.name}</option>
+                  ))}
+                </select>
+                <div className="relative">
+                  <textarea
+                    value={delegateTask}
+                    onChange={e => setDelegateTask(e.target.value)}
+                    placeholder="Describe the task to delegate..."
+                    rows={2}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-4 text-[13px] text-white/80 outline-none focus:border-amber-500/40 resize-none"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (delegateTarget && delegateTask.trim()) {
+                      onDelegate(agent.id, delegateTarget, delegateTask);
+                      setDelegateTask("");
+                    }
+                  }}
+                  disabled={!delegateTarget || !delegateTask.trim()}
+                  className="w-full py-2.5 bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[12px] font-semibold rounded-xl hover:bg-amber-500/30 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
+                >
+                  <Send size={12} /> Delegate to {delegateTarget || '…'}
+                </button>
               </div>
             </div>
           )}

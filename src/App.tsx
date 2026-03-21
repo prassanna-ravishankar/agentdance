@@ -247,6 +247,16 @@ function App() {
     setSavedSessions([]);
   };
 
+  const handleDelegate = async (fromId: string, targetName: string, task: string) => {
+    const from = agents.find(a => a.id === fromId);
+    const message = `[Task delegated by orchestrator '${from?.name || fromId}'] ${task}`;
+    const target = agents.find(a => a.name === targetName);
+    if (target) {
+      await handleSendCommand(target.id, message);
+    }
+    setInspectingAgentId(null);
+  };
+
   const handleSetOrchestrator = async (agentId: string) => {
     try {
       await invoke("set_orchestrator", { agentId });
@@ -379,12 +389,14 @@ function App() {
       {inspectingAgent && (
         <AgentInspector
           agent={inspectingAgent}
+          allAgents={agents}
           onClose={() => setInspectingAgentId(null)}
           onUpdatePlan={handleUpdatePlan}
           onFork={handleFork}
           onSendCommand={handleSendCommand}
           onStop={handleStopAgent}
           onSetOrchestrator={handleSetOrchestrator}
+          onDelegate={handleDelegate}
         />
       )}
 
