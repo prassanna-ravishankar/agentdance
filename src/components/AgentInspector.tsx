@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { Agent, AgentPlanTask } from "../lib/types";
 import { cn } from "../lib/cn";
-import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown, Square } from "lucide-react";
+import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown, Square, Radio } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AgentInspectorProps {
@@ -135,12 +135,20 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
                 {agent.history.map((entry, i) => (
                   <div key={i} className={cn(
                     "p-3 rounded-xl text-[13px] leading-relaxed",
-                    entry.role === 'user'
-                      ? "bg-blue-500/10 border border-blue-500/20 text-blue-200 ml-8"
-                      : "bg-white/[0.03] border border-white/[0.06] text-white/70 mr-8"
+                    entry.role === 'user' && "bg-blue-500/10 border border-blue-500/20 text-blue-200 ml-8",
+                    entry.role === 'agent' && "bg-white/[0.03] border border-white/[0.06] text-white/70 mr-8",
+                    entry.role === 'peer' && "bg-purple-500/10 border border-purple-500/20 text-purple-200 ml-4 mr-4"
                   )}>
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-white/30 block mb-1">
-                      {entry.role === 'user' ? 'You' : agent.name}
+                    <span className={cn(
+                      "text-[9px] font-bold uppercase tracking-widest block mb-1",
+                      entry.role === 'peer' ? "text-purple-400/60" : "text-white/30"
+                    )}>
+                      {entry.role === 'user' ? 'You' : entry.role === 'peer' ? (
+                        <span className="flex items-center gap-1">
+                          <Radio size={9} />
+                          {entry.peerName} · {entry.commKind}
+                        </span>
+                      ) : agent.name}
                     </span>
                     <p className="whitespace-pre-wrap break-words">{entry.text.length > 500 ? entry.text.slice(0, 500) + '…' : entry.text}</p>
                   </div>

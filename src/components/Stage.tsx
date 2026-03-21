@@ -1,7 +1,7 @@
 import React from "react";
 import { Agent, AgentPlan, AgentPlanTask } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, Circle, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, AlertCircle, Radio } from "lucide-react";
 import { cn } from "../lib/cn";
 import { getPlanProgress } from "../lib/planUtils";
 
@@ -37,7 +37,15 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
                    <StatusIcon status={agent.status === 'busy' ? 'running' : 'pending'} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-[15px] text-white/90">{agent.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-[15px] text-white/90">{agent.name}</h3>
+                    {agent.history.some(h => h.role === 'peer') && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/20 text-purple-300 text-[9px] font-bold">
+                        <Radio size={8} />
+                        {agent.history.filter(h => h.role === 'peer').length}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[10px] text-white/40 tracking-[0.15em] uppercase mt-1 font-semibold">{agent.role}</p>
                 </div>
               </div>

@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use tokio::net::TcpListener;
 
@@ -13,11 +14,30 @@ use crate::pending_queries::PendingQueries;
 use crate::process_manager::ProcessManager;
 use crate::registry::AgentRegistry;
 
+#[derive(Clone, Serialize)]
+pub struct CommEvent {
+    pub from_name: String,
+    pub from_id: String,
+    pub to_name: String,
+    pub to_id: String,
+    pub kind: String, // "notify", "ask", "broadcast", "response"
+    pub message: String,
+    pub timestamp: u64,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 #[derive(Clone)]
 pub struct BridgeState {
     pub registry: Arc<Mutex<AgentRegistry>>,
     pub process_manager: Arc<Mutex<ProcessManager>>,
     pub pending_queries: Arc<Mutex<PendingQueries>>,
+    pub app_handle: AppHandle,
 }
 
 #[derive(Serialize)]
@@ -154,7 +174,14 @@ async fn notify_agent(
 
     let text = format!("[Message from '{}'] {}", sender_name, req.message);
     match send_prompt_to_agent(&state.process_manager, &target_id, &session_id, &text).await {
-        Ok(()) => Json(NotifyResponse { success: true, error: None }),
+        Ok(()) => {
+            let _ = state.app_handle.emit("agent-comm", CommEvent {
+                from_name: sender_name, from_id: req.from_agent_id,
+                to_name: req.target_name.clone(), to_id: target_id,
+                kind: "notify".to_string(), message: req.message, timestamp: now_ms(),
+            });
+            Json(NotifyResponse { success: true, error: None })
+        }
         Err(e) => Json(NotifyResponse { success: false, error: Some(e) }),
     }
 }
@@ -198,6 +225,11 @@ async fn ask_agent(
     };
 
     let text = format!("[Question from '{}' — please respond directly] {}", sender_name, req.question);
+    let _ = state.app_handle.emit("agent-comm", CommEvent {
+        from_name: sender_name.clone(), from_id: req.from_agent_id.clone(),
+        to_name: req.target_name.clone(), to_id: target_id.clone(),
+        kind: "ask".to_string(), message: req.question.clone(), timestamp: now_ms(),
+    });
     if let Err(e) = send_prompt_to_agent(&state.process_manager, &target_id, &session_id, &text).await {
         // Clean up the pending query
         let mut pq = state.pending_queries.lock().await;
@@ -211,11 +243,16 @@ async fn ask_agent(
 
     // Wait for response with 60s timeout
     match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
-        Ok(Ok(response)) => Json(AskResponse {
-            success: true,
-            response: Some(response),
-            error: None,
-        }),
+        Ok(Ok(response)) => {
+            let _ = state.app_handle.emit("agent-comm", CommEvent {
+                from_name: req.target_name.clone(), from_id: target_id,
+                to_name: sender_name, to_id: req.from_agent_id,
+                kind: "response".to_string(),
+                message: if response.len() > 200 { format!("{}…", &response[..200]) } else { response.clone() },
+                timestamp: now_ms(),
+            });
+            Json(AskResponse { success: true, response: Some(response), error: None })
+        }
         Ok(Err(_)) => Json(AskResponse {
             success: false,
             response: None,
@@ -262,7 +299,12 @@ async fn broadcast_to_agents(
         };
         if let Some(sid) = session_id {
             if send_prompt_to_agent(&state.process_manager, &agent_id, &sid, &text).await.is_ok() {
-                sent_to.push(agent_name);
+                sent_to.push(agent_name.clone());
+                let _ = state.app_handle.emit("agent-comm", CommEvent {
+                    from_name: sender_name.clone(), from_id: req.from_agent_id.clone(),
+                    to_name: agent_name, to_id: agent_id,
+                    kind: "broadcast".to_string(), message: req.message.clone(), timestamp: now_ms(),
+                });
             }
         }
     }

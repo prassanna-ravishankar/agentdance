@@ -531,6 +531,7 @@ pub fn run() {
                 registry: agent_registry.clone(),
                 process_manager: process_manager.clone(),
                 pending_queries: pending_queries.clone(),
+                app_handle: app.handle().clone(),
             };
             let port = tauri::async_runtime::block_on(bridge_api::start_bridge_api(bridge_state));
             let bridge_port: SharedBridgePort = Arc::new(Mutex::new(port));

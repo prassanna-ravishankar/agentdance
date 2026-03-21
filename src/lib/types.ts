@@ -14,8 +14,20 @@ export interface AgentPlan {
 }
 
 export interface HistoryEntry {
-  role: 'user' | 'agent';
+  role: 'user' | 'agent' | 'peer';
   text: string;
+  timestamp: number;
+  peerName?: string; // for inter-agent messages
+  commKind?: 'notify' | 'ask' | 'broadcast' | 'response';
+}
+
+export interface CommEvent {
+  from_name: string;
+  from_id: string;
+  to_name: string;
+  to_id: string;
+  kind: 'notify' | 'ask' | 'broadcast' | 'response';
+  message: string;
   timestamp: number;
 }
 
