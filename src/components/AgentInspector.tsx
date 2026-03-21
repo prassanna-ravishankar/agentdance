@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { flushSync } from "react-dom";
 import { Agent, AgentPlanTask } from "../lib/types";
-import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown } from "lucide-react";
+import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown, Square } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AgentInspectorProps {
@@ -10,9 +10,10 @@ interface AgentInspectorProps {
   onUpdatePlan: (agentId: string, tasks: AgentPlanTask[]) => void;
   onFork: (agentId: string) => void;
   onSendCommand: (agentId: string, message: string) => void;
+  onStop: (agentId: string) => void;
 }
 
-export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCommand }: AgentInspectorProps) {
+export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCommand, onStop }: AgentInspectorProps) {
   const [editedTasks, setEditedTasks] = useState<AgentPlanTask[]>(
     agent.pinnedWaypoints?.map(t => ({ ...t }))
     ?? agent.plan?.tasks.map(t => ({ ...t }))
@@ -153,7 +154,14 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
             >
               Discard Edits
             </button>
-            <button 
+            <button
+              onClick={() => onStop(agent.id)}
+              className="flex items-center gap-2 px-5 py-2.5 text-[13px] font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-all border border-rose-500/20"
+            >
+              <Square size={14} fill="currentColor" />
+              Stop Agent
+            </button>
+            <button
               onClick={() => onFork(agent.id)}
               className="px-5 py-2.5 text-[13px] font-semibold text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-xl transition-all border border-blue-500/20 group"
             >

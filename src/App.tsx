@@ -19,7 +19,7 @@ interface LogLine {
 interface AgentUpdatePayload {
   id: string;
   name?: string;
-  status: 'idle' | 'busy' | 'error';
+  status: 'idle' | 'busy' | 'error' | 'disconnected';
   fork_of?: string;
   message?: string;
   plan?: {
@@ -145,6 +145,16 @@ const handleFork = async (agentId: string) => {
     }
   };
 
+  const handleStopAgent = async (agentId: string) => {
+    try {
+      await invoke("stop_agent", { agentId });
+      setInspectingAgentId(null);
+      setAgents(prev => prev.filter(a => a.id !== agentId));
+    } catch (e) {
+      console.error("Failed to stop agent", e);
+    }
+  };
+
   const handleUpdatePlan = (agentId: string, tasks: AgentPlanTask[]) => {
     setAgents(prev => prev.map(a =>
       a.id === agentId ? { ...a, plan: a.plan ? { ...a.plan, tasks } : a.plan, pinnedWaypoints: tasks } : a
@@ -196,12 +206,13 @@ const handleFork = async (agentId: string) => {
       </main>
 
       {inspectingAgent && (
-        <AgentInspector 
-          agent={inspectingAgent} 
+        <AgentInspector
+          agent={inspectingAgent}
           onClose={() => setInspectingAgentId(null)}
           onUpdatePlan={handleUpdatePlan}
           onFork={handleFork}
           onSendCommand={handleSendCommand}
+          onStop={handleStopAgent}
         />
       )}
 

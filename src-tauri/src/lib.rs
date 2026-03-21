@@ -68,9 +68,15 @@ async fn connect_agent(
 
     let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
     let mut stdin = child.stdin.take().ok_or("Failed to capture stdin")?;
+    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
     let agent_id = format!("agent-{}", &uuid::Uuid::new_v4().to_string()[..8]);
     let cwd = directory.unwrap_or_else(|| ".".to_string());
+
+    {
+        let mut mgr = state.lock().await;
+        mgr.register_child(agent_id.clone(), child);
+    }
 
     let mut reader = BufReader::new(stdout).lines();
 
@@ -148,7 +154,6 @@ async fn connect_agent(
     let handle_clone = handle.clone();
     let state_clone = state.inner().clone();
 
-    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
     let id_for_stderr = agent_id.clone();
     let handle_for_stderr = handle.clone();
     tauri::async_runtime::spawn(async move {
@@ -335,6 +340,25 @@ async fn list_tools(state: tauri::State<'_, SharedMcpRegistry>) -> Result<Vec<Mc
 }
 
 #[tauri::command]
+async fn stop_agent(
+    handle: AppHandle,
+    state: tauri::State<'_, SharedProcessManager>,
+    agent_id: String,
+) -> Result<(), String> {
+    let mut mgr = state.lock().await;
+    mgr.kill_agent(&agent_id).await?;
+    let _ = handle.emit("agent-update", AgentUpdate {
+        id: agent_id,
+        name: None,
+        status: "disconnected".to_string(),
+        plan: None,
+        fork_of: None,
+        message: None,
+    });
+    Ok(())
+}
+
+#[tauri::command]
 fn fork_session(handle: AppHandle, agent_id: String) {
     let fork_id = format!("{}-fork-{}", agent_id, &uuid::Uuid::new_v4().to_string()[..4]);
     let update = AgentUpdate {
@@ -366,6 +390,15 @@ pub fn run() {
     { builder = builder.plugin(tauri_plugin_webdriver::init()); }
 
     builder
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let pm = window.state::<SharedProcessManager>().inner().clone();
+                tauri::async_runtime::block_on(async {
+                    let mut mgr = pm.lock().await;
+                    mgr.kill_all().await;
+                });
+            }
+        })
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("./data"));
             if !app_data_dir.exists() {
@@ -388,6 +421,7 @@ pub fn run() {
             list_tools,
             connect_agent,
             send_agent_input,
+            stop_agent,
             pick_directory
         ])
         .run(tauri::generate_context!())

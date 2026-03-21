@@ -1,4 +1,4 @@
-use tokio::process::ChildStdin;
+use tokio::process::{Child, ChildStdin};
 use tokio::io::AsyncWriteExt;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
@@ -7,6 +7,7 @@ use std::sync::Arc;
 pub struct ProcessManager {
     pub inputs: HashMap<String, ChildStdin>,
     pub session_ids: HashMap<String, String>,
+    pub children: HashMap<String, Child>,
 }
 
 impl ProcessManager {
@@ -14,7 +15,12 @@ impl ProcessManager {
         Self {
             inputs: HashMap::new(),
             session_ids: HashMap::new(),
+            children: HashMap::new(),
         }
+    }
+
+    pub fn register_child(&mut self, id: String, child: Child) {
+        self.children.insert(id, child);
     }
 
     pub fn register_stdin(&mut self, id: String, stdin: ChildStdin) {
@@ -37,6 +43,22 @@ impl ProcessManager {
             Ok(())
         } else {
             Err(format!("No active process found for agent ID: {}", id))
+        }
+    }
+
+    pub async fn kill_agent(&mut self, id: &str) -> Result<(), String> {
+        self.inputs.remove(id);
+        self.session_ids.remove(id);
+        if let Some(mut child) = self.children.remove(id) {
+            child.kill().await.map_err(|e| format!("Failed to kill agent {}: {}", id, e))?;
+        }
+        Ok(())
+    }
+
+    pub async fn kill_all(&mut self) {
+        let ids: Vec<String> = self.children.keys().cloned().collect();
+        for id in ids {
+            let _ = self.kill_agent(&id).await;
         }
     }
 }

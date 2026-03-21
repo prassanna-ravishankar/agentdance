@@ -17,7 +17,7 @@ export interface Agent {
   id: string;
   name: string;
   role: string;
-  status: 'idle' | 'busy' | 'error';
+  status: 'idle' | 'busy' | 'error' | 'disconnected';
   lastActive: string;
   plan?: AgentPlan;
   pinnedWaypoints?: AgentPlanTask[];
