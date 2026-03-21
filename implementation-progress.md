@@ -2,70 +2,51 @@
 
 ## Phase 1: The Soloist ✅ Complete
 
-Goal: a live-updating desktop UI connected to a real agent.
+- Tauri + React + Tailwind desktop app
+- ACP handshake: `initialize` → `session/new` → `session/prompt` with streaming responses
+- Works with Claude Code (`npx @zed-industries/claude-agent-acp`) and OpenCode (`opencode acp`)
+- Live plan visualization from `session/update` notifications
+- Message streaming with typing cursor
+- Auto-approve `session/request_permission`
+- ACP debug log panel
+- SQLite findings store + MCP registry stubs
 
-**Done:**
-- Tauri + React + Tailwind app scaffolded
-- ACP handshake implemented in Rust: `initialize` → `session/new` (sequential, waits for each response before sending the next)
-- Works with both **Claude Code** (`npx @zed-industries/claude-agent-acp`) and **OpenCode** (`opencode acp`)
-- `session/prompt` sends user messages; streaming `agent_message_chunk` responses shown live on agent cards with a blinking cursor
-- `session/update` plan notifications parsed — `entries[].content` and `entries[].status` rendered as a task list on the card
-- Agent cards show status (`idle` / `busy`), last-active timestamp, agent ID
-- 200ms idle transition delay handles agents that send message chunks after `stopReason` (OpenCode behaviour)
-- ACP debug log panel (bottom of screen) shows raw stdin/stdout/stderr per agent for diagnostics
-- SQLite-backed findings store (`memory.rs`) wired as a Tauri command (`commit_finding`)
-- MCP registry stub (`mcp_host.rs`) in place
+## Phase 2: The Duet ✅ Complete
 
-**Not yet done in Phase 1:**
-- Conversation history per agent (cards show only the current/last response)
-- Agent disconnect detection (dead process looks frozen-idle)
-- Message buffer doesn't reset between turns (second reply appends to first)
+- Agent termination + cleanup (Stop button, kill on app exit)
+- Disconnect detection (dead process → red "disconnected" badge, dimmed card)
+- Per-agent conversation history (scrollable in inspector, user/agent/peer messages)
+- Session persistence (save configs on exit, restore banner on reopen)
+- Real fork (spawns new agent with parent's config + context prompt)
+- Dynamic waypoints (add/delete/reorder, structured steering prompt on Resume Dance)
+- Native directory picker
 
-**Done (post-Phase 1 correctness):**
-- ✅ Auto-approve `session/request_permission`: backend detects the JSON-RPC permission request notification, immediately responds with `allow_always`, preventing agents from silently stalling mid-task
+## Phase 3: The Ensemble ✅ Core Complete
 
----
+### Agent registry + discovery
+- In-memory `AgentRegistry` with register/remove/update_status/set_description
+- Axum HTTP bridge API on localhost (random port)
+- MCP bridge script (`mcp-bridge.mjs`) passed to each agent in `session/new`
 
-## Phase 2: The Duet 🔄 In Progress
+### Inter-agent messaging (5 MCP tools)
+- `list_agents` — discover all peers (name, status, directory, description)
+- `set_description` — label what you're working on
+- `notify_agent` — fire-and-forget message to a peer by name
+- `ask_agent` — synchronous query with 60s timeout (oneshot channels)
+- `broadcast` — message all peers (excludes self)
 
-Goal: multi-agent workspace with steering and forking.
+### Communication visualization
+- Mesh comms panel (tabbed: Mesh / ACP Debug) with chronological message log
+- Color-coded kind badges: blue=notify, amber=ask, purple=broadcast, green=response
+- Purple peer message indicators on agent cards
+- Inspector history distinguishes user (blue), agent (gray), peer (purple) messages
 
-**Partially done:**
-- Multiple agents can be spawned simultaneously (each gets its own process, session ID, stdin handle)
-- `AgentInspector` modal has a "Fork Trajectory" button and a plan-edit UI
-- `fork_session` Tauri command exists
+### God Prompt omnibar
+- Cmd+K opens overlay, broadcasts to all active agents
+- Shows count of active agents, Esc to close
 
-**Stubs / not wired:**
-- `fork_session` fabricates a fake hardcoded agent — does not spawn a real process or do the ACP handshake
-- Plan edits in the inspector update local React state only; nothing is sent to the agent on "Resume Dance"
-- `ProcessManager` doesn't store spawn metadata (command/args/dir), which blocks real forking and reconnect
-- No cross-agent routing or visual handoff tethers
-- SpawnModal uses a free-text path field instead of a native directory picker
-
-**Done (Tier 1 — small):**
-- ✅ Reset message buffer between prompts (`message_buf.clear()` after clone in stopReason branch)
-- ✅ Send plan edits as a steering prompt on "Resume Dance" (`handleUpdatePlan` calls `handleSendCommand`)
-- ✅ Native directory picker in SpawnModal (`tauri-plugin-dialog` + Browse button)
-- ✅ Dynamic waypoints: add blank row (auto-focused), delete with X, reorder with up/down chevrons, empty-state ghost row
-- ✅ Structured `[WAYPOINT UPDATE]` steering prompt on Resume Dance (semantic replacement, not suggestion)
-- ✅ Compressed plan view on agent cards: progress bar + single active task + "N / M waypoints" counter (replaces full task wall)
-- ✅ Waypoint persistence: `pinnedWaypoints` field on Agent survives backend `agent-update` plan overwrites; inspector prefers user-authored waypoints on reopen with "· user-authored" badge
-
-**Next up (Tier 2 — medium):**
-- Agent disconnect detection + `disconnected` status
-- Per-agent conversation history in AgentInspector
-
-**Next up (Tier 3 — large):**
-- Real `fork_session`: store spawn metadata, re-spawn process, full handshake
-
----
-
-## Phase 3: The Ensemble ❌ Not started
-
-Goal: self-organizing swarm with shared memory and unified tooling.
-
-- MCP Bridge (central host proxying tool calls to registered MCP servers) — registry stub exists, no routing
-- Epistemic Shared Memory (vector search on findings) — SQLite store exists, no `list_findings` command exposed, no UI
-- Agent-to-agent capability discovery and dynamic sub-contracting
-- "God Prompt" omnibar (Cmd+K) for spawning agent ensembles from a single instruction
-- Visual handoff tethers between communicating agents on the Stage
+### Not yet implemented
+- MCP Bridge (central tool proxy for registered MCP servers)
+- Epistemic Shared Memory (vector search on findings)
+- Visual handoff tethers between communicating agents on Stage
+- Agent-to-agent capability discovery / dynamic sub-contracting

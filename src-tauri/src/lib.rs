@@ -121,11 +121,16 @@ async fn connect_agent(
 
     // ── Step 2: send newSession with MCP bridge ────────────────────────────
     let port = *bridge_port.lock().await;
-    let bridge_script = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("../../../mcp-bridge.mjs")))
-        .and_then(|p| std::fs::canonicalize(p).ok())
-        .unwrap_or_else(|| PathBuf::from("mcp-bridge.mjs"));
+    // Resolve mcp-bridge.mjs: try relative to exe (dev: target/debug/app → ../../..),
+    // then relative to cwd, then as absolute fallback
+    let bridge_script = [
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("../../../mcp-bridge.mjs"))),
+        Some(PathBuf::from("mcp-bridge.mjs")),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(|p| std::fs::canonicalize(p).ok())
+    .unwrap_or_else(|| PathBuf::from("mcp-bridge.mjs"));
 
     let ns_id = next_id();
     let ns_str = serde_json::to_string(&serde_json::json!({
