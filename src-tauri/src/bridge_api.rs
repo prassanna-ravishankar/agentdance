@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use tokio::net::TcpListener;
 
+use crate::memory::MemoryManager;
 use crate::pending_queries::PendingQueries;
 use crate::process_manager::ProcessManager;
 use crate::registry::AgentRegistry;
@@ -44,6 +45,7 @@ pub struct BridgeState {
     pub registry: Arc<Mutex<AgentRegistry>>,
     pub process_manager: Arc<Mutex<ProcessManager>>,
     pub pending_queries: Arc<Mutex<PendingQueries>>,
+    pub memory: Arc<Mutex<MemoryManager>>,
     pub app_handle: AppHandle,
 }
 
@@ -322,7 +324,74 @@ async fn broadcast_to_agents(
     })
 }
 
-/// Starts the bridge HTTP API on a random localhost port. Returns the port.
+#[derive(Deserialize)]
+struct MemoryWriteRequest {
+    agent_id: String,
+    content: String,
+    tags: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+struct MemoryReadRequest {
+    query: Option<String>,
+    tag: Option<String>,
+    agent_id: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct MemoryEntry {
+    id: i64,
+    agent: String,
+    content: String,
+    tags: Vec<String>,
+    timestamp: String,
+}
+
+async fn memory_write(
+    State(state): State<BridgeState>,
+    Json(req): Json<MemoryWriteRequest>,
+) -> Json<serde_json::Value> {
+    let mem = state.memory.lock().await;
+    let tags = req.tags.unwrap_or_default();
+    match mem.write(&req.agent_id, &req.content, &tags) {
+        Ok(id) => Json(serde_json::json!({"success": true, "id": id})),
+        Err(e) => Json(serde_json::json!({"success": false, "error": e.to_string()})),
+    }
+}
+
+async fn memory_read(
+    State(state): State<BridgeState>,
+    Json(req): Json<MemoryReadRequest>,
+) -> Json<serde_json::Value> {
+    let mem = state.memory.lock().await;
+    let limit = req.limit.unwrap_or(20);
+
+    let findings = if let Some(query) = &req.query {
+        mem.search(query, limit)
+    } else if let Some(tag) = &req.tag {
+        mem.read_by_tag(tag, limit)
+    } else if let Some(agent_id) = &req.agent_id {
+        mem.read_by_agent(agent_id, limit)
+    } else {
+        mem.read_all(limit)
+    };
+
+    match findings {
+        Ok(items) => {
+            let entries: Vec<MemoryEntry> = items.into_iter().map(|f| MemoryEntry {
+                id: f.id.unwrap_or(0),
+                agent: f.agent_id,
+                content: f.content,
+                tags: f.tags,
+                timestamp: f.timestamp,
+            }).collect();
+            Json(serde_json::json!({"success": true, "entries": entries}))
+        }
+        Err(e) => Json(serde_json::json!({"success": false, "error": e.to_string()})),
+    }
+}
+
 pub async fn start_bridge_api(state: BridgeState) -> u16 {
     let app = Router::new()
         .route("/agents", get(list_agents))
@@ -330,6 +399,8 @@ pub async fn start_bridge_api(state: BridgeState) -> u16 {
         .route("/notify", post(notify_agent))
         .route("/ask", post(ask_agent))
         .route("/broadcast", post(broadcast_to_agents))
+        .route("/memory/write", post(memory_write))
+        .route("/memory/read", post(memory_read))
         .with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("Failed to bind bridge API");

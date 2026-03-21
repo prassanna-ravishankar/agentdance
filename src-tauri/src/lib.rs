@@ -398,6 +398,7 @@ async fn commit_finding(state: tauri::State<'_, SharedMemoryManager>, agent_id: 
         id: None,
         agent_id,
         content,
+        tags: vec![],
         timestamp: "".to_string(),
     }).map_err(|e| e.to_string())
 }
@@ -531,6 +532,7 @@ pub fn run() {
                 registry: agent_registry.clone(),
                 process_manager: process_manager.clone(),
                 pending_queries: pending_queries.clone(),
+                memory: memory_manager.clone(),
                 app_handle: app.handle().clone(),
             };
             let port = tauri::async_runtime::block_on(bridge_api::start_bridge_api(bridge_state));

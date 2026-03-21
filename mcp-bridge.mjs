@@ -60,6 +60,30 @@ const TOOLS = [
       required: ["message"],
     },
   },
+  {
+    name: "write_shared_memory",
+    description: "Write a finding, insight, or piece of context to shared memory. Other agents can read it. Use this to share discoveries, decisions, or important context that others should know about.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "The finding or context to share" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags for categorization (e.g. 'bug', 'auth', 'decision')" },
+      },
+      required: ["content"],
+    },
+  },
+  {
+    name: "read_shared_memory",
+    description: "Read from shared memory. Can search by keyword, filter by tag, or get recent entries. Returns findings written by any agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search keyword (searches content and tags)" },
+        tag: { type: "string", description: "Filter by tag" },
+        limit: { type: "number", description: "Max entries to return (default 20)" },
+      },
+    },
+  },
 ];
 
 function send(obj) {
@@ -145,6 +169,31 @@ async function handleRequest(msg) {
         result = data.sent_to.length > 0
           ? `Broadcast sent to: ${data.sent_to.join(", ")}`
           : "No other agents to broadcast to";
+      } else if (toolName === "write_shared_memory") {
+        const data = await callApi("/memory/write", {
+          agent_id: AGENT_ID,
+          content: args.content,
+          tags: args.tags || [],
+        });
+        result = data.success
+          ? `Saved to shared memory (id: ${data.id})`
+          : `Failed: ${data.error}`;
+      } else if (toolName === "read_shared_memory") {
+        const data = await callApi("/memory/read", {
+          query: args.query || null,
+          tag: args.tag || null,
+          limit: args.limit || 20,
+        });
+        if (!data.success) {
+          result = `Failed: ${data.error}`;
+        } else if (data.entries.length === 0) {
+          result = "No entries found in shared memory";
+        } else {
+          const lines = data.entries.map(
+            (e) => `[${e.timestamp}] ${e.agent}: ${e.content}${e.tags.length ? ` (tags: ${e.tags.join(", ")})` : ""}`
+          );
+          result = lines.join("\n");
+        }
       } else {
         send({
           jsonrpc: "2.0",
