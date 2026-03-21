@@ -13,6 +13,12 @@ export interface AgentPlan {
   tasks: AgentPlanTask[];
 }
 
+export interface HistoryEntry {
+  role: 'user' | 'agent';
+  text: string;
+  timestamp: number;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -23,4 +29,5 @@ export interface Agent {
   pinnedWaypoints?: AgentPlanTask[];
   forkOf?: string;
   message?: string;
+  history: HistoryEntry[];
 }

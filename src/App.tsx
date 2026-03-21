@@ -4,7 +4,7 @@ import { Stage } from "./components/Stage";
 import { AgentInspector } from "./components/AgentInspector";
 import { SpawnModal } from "./components/SpawnModal";
 import { Background } from "./components/Background";
-import { Agent, AgentPlanTask } from "./lib/types";
+import { Agent, AgentPlanTask, HistoryEntry } from "./lib/types";
 import { Plus, Terminal, ChevronDown, ChevronUp } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -50,12 +50,18 @@ function App() {
           if (existing) {
             return prev.map((agent) => {
               if (agent.id === payload.id) {
+                // When transitioning to idle with a final message, record it in history
+                const history = [...agent.history];
+                if (payload.status === 'idle' && payload.message) {
+                  history.push({ role: 'agent', text: payload.message, timestamp: Date.now() });
+                }
                 return {
                   ...agent,
                   name: payload.name || agent.name,
                   status: payload.status,
                   lastActive: "Just now",
                   message: payload.message !== undefined ? payload.message : agent.message,
+                  history,
                   plan: payload.plan ? {
                     id: payload.plan.id,
                     agentId: payload.plan.agent_id,
@@ -79,6 +85,7 @@ function App() {
               lastActive: "Just now",
               forkOf: payload.fork_of,
               message: payload.message,
+              history: [],
               plan: payload.plan ? {
                 id: payload.plan.id,
                 agentId: payload.plan.agent_id,
@@ -140,6 +147,9 @@ const handleFork = async (agentId: string) => {
   const handleSendCommand = async (agentId: string, message: string) => {
     try {
       await invoke("send_agent_input", { agentId, message });
+      setAgents(prev => prev.map(a =>
+        a.id === agentId ? { ...a, history: [...a.history, { role: 'user' as const, text: message, timestamp: Date.now() }] } : a
+      ));
     } catch (e) {
       console.error("Failed to send command", e);
     }

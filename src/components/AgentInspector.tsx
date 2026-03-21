@@ -1,6 +1,7 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { Agent, AgentPlanTask } from "../lib/types";
+import { cn } from "../lib/cn";
 import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown, Square } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -21,6 +22,11 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
   );
   const [command, setCommand] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const historyEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    historyEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [agent.history.length]);
 
   const handleTaskChange = (index: number, newTitle: string) => {
     const next = [...editedTasks];
@@ -120,6 +126,29 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
               </button>
             </div>
           </div>
+
+          {/* Conversation history */}
+          {agent.history.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] ml-1">Conversation History</h3>
+              <div className="max-h-60 overflow-y-auto space-y-2 scrollbar-thin">
+                {agent.history.map((entry, i) => (
+                  <div key={i} className={cn(
+                    "p-3 rounded-xl text-[13px] leading-relaxed",
+                    entry.role === 'user'
+                      ? "bg-blue-500/10 border border-blue-500/20 text-blue-200 ml-8"
+                      : "bg-white/[0.03] border border-white/[0.06] text-white/70 mr-8"
+                  )}>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-white/30 block mb-1">
+                      {entry.role === 'user' ? 'You' : agent.name}
+                    </span>
+                    <p className="whitespace-pre-wrap break-words">{entry.text.length > 500 ? entry.text.slice(0, 500) + '…' : entry.text}</p>
+                  </div>
+                ))}
+                <div ref={historyEndRef} />
+              </div>
+            </div>
+          )}
 
           {/* New Command HUD section */}
           <div className="space-y-4">
