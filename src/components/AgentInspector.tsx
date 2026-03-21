@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { Agent, AgentPlanTask } from "../lib/types";
 import { cn } from "../lib/cn";
-import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown, Square, Radio } from "lucide-react";
+import { X, Play, Pause, Plus, GitFork, Send, ChevronUp, ChevronDown, Square, Radio, Crown } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AgentInspectorProps {
@@ -12,9 +12,10 @@ interface AgentInspectorProps {
   onFork: (agentId: string) => void;
   onSendCommand: (agentId: string, message: string) => void;
   onStop: (agentId: string) => void;
+  onSetOrchestrator: (agentId: string) => void;
 }
 
-export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCommand, onStop }: AgentInspectorProps) {
+export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCommand, onStop, onSetOrchestrator }: AgentInspectorProps) {
   const [editedTasks, setEditedTasks] = useState<AgentPlanTask[]>(
     agent.pinnedWaypoints?.map(t => ({ ...t }))
     ?? agent.plan?.tasks.map(t => ({ ...t }))
@@ -82,7 +83,14 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
               <Pause className="text-blue-400" size={20} fill="currentColor" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white/90 tracking-tight">Steering: {agent.name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold text-white/90 tracking-tight">Steering: {agent.name}</h2>
+                {agent.isOrchestrator && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold">
+                    <Crown size={10} /> Orchestrator
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-blue-300/80 uppercase tracking-widest mt-1 font-semibold">Trajectory Paused</p>
             </div>
           </div>
@@ -198,9 +206,18 @@ export function AgentInspector({ agent, onClose, onUpdatePlan, onFork, onSendCom
               <Square size={14} fill="currentColor" />
               Stop Agent
             </button>
+            {!agent.isOrchestrator && (
+              <button
+                onClick={() => onSetOrchestrator(agent.id)}
+                className="flex items-center gap-2 px-5 py-2.5 text-[13px] font-semibold text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-xl transition-all border border-amber-500/20"
+              >
+                <Crown size={14} />
+                Make Orchestrator
+              </button>
+            )}
             <button
               onClick={() => onFork(agent.id)}
-              className="px-5 py-2.5 text-[13px] font-semibold text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-xl transition-all border border-blue-500/20 group"
+              className="flex items-center gap-2 px-5 py-2.5 text-[13px] font-semibold text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-xl transition-all border border-blue-500/20 group"
             >
               <GitFork size={14} className="group-hover:rotate-12 transition-transform" />
               Fork Trajectory

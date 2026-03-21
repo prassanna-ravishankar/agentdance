@@ -115,6 +115,7 @@ function App() {
               message: payload.message,
               history: [],
               peerMessageCount: 0,
+              isOrchestrator: false,
               plan: mapPlanPayload(payload.plan),
             };
             return [...prev, newAgent];
@@ -150,6 +151,12 @@ function App() {
       }));
     }).then(fn => { unlistenComm = fn; }).catch(() => {});
 
+    let unlistenOrch: (() => void) | undefined;
+    listen<{ agent_id: string }>("orchestrator-changed", (event) => {
+      const orchId = event.payload.agent_id;
+      setAgents(prev => prev.map(a => ({ ...a, isOrchestrator: a.id === orchId })));
+    }).then(fn => { unlistenOrch = fn; }).catch(() => {});
+
     let unlistenSpawn: (() => void) | undefined;
     listen<{ name: string; command: string; args: string[]; directory?: string; initial_prompt?: string }>("spawn-agent", async (event) => {
       const { name, command, args, directory, initial_prompt } = event.payload;
@@ -171,6 +178,7 @@ function App() {
       if (unlistenFn) unlistenFn();
       if (unlistenLog) unlistenLog();
       if (unlistenComm) unlistenComm();
+      if (unlistenOrch) unlistenOrch();
       if (unlistenSpawn) unlistenSpawn();
     };
   }, []);
@@ -237,6 +245,15 @@ function App() {
   const handleRestoreSession = async () => {
     await Promise.all(savedSessions.map(s => handleConnect(s.name, s.command, s.args, s.directory || "")));
     setSavedSessions([]);
+  };
+
+  const handleSetOrchestrator = async (agentId: string) => {
+    try {
+      await invoke("set_orchestrator", { agentId });
+      setInspectingAgentId(null);
+    } catch (e) {
+      console.error("Failed to set orchestrator", e);
+    }
   };
 
   const handleDismissRestore = () => setSavedSessions([]);
@@ -367,6 +384,7 @@ function App() {
           onFork={handleFork}
           onSendCommand={handleSendCommand}
           onStop={handleStopAgent}
+          onSetOrchestrator={handleSetOrchestrator}
         />
       )}
 

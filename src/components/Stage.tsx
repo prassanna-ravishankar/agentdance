@@ -1,7 +1,7 @@
 import React from "react";
 import { Agent, AgentPlan, AgentPlanTask } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, Circle, Loader2, AlertCircle, Radio } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, AlertCircle, Radio, Crown } from "lucide-react";
 import { cn } from "../lib/cn";
 import { getPlanProgress } from "../lib/planUtils";
 
@@ -58,7 +58,10 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-white/40 tracking-[0.15em] uppercase mt-1 font-semibold">{agent.role}</p>
+                  <p className="text-[10px] text-white/40 tracking-[0.15em] uppercase mt-1 font-semibold flex items-center gap-1.5">
+                    {agent.isOrchestrator && <Crown size={10} className="text-amber-400" />}
+                    {agent.role}
+                  </p>
                 </div>
               </div>
               <div className={cn(
