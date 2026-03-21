@@ -5,10 +5,17 @@ import { AgentInspector } from "./components/AgentInspector";
 import { SpawnModal } from "./components/SpawnModal";
 import { Background } from "./components/Background";
 import { Agent, AgentPlanTask, HistoryEntry } from "./lib/types";
-import { Plus, Terminal, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Terminal, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
+
+interface SavedSession {
+  name: string;
+  command: string;
+  args: string[];
+  directory: string | null;
+}
 
 interface LogLine {
   agent_id: string;
@@ -37,6 +44,7 @@ function App() {
   const [isSpawnModalOpen, setIsSpawnModalOpen] = useState(false);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [logsOpen, setLogsOpen] = useState(true);
+  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -111,6 +119,10 @@ function App() {
       setLogs(prev => [...prev.slice(-200), event.payload]);
     }).then(fn => { unlistenLog = fn; }).catch(() => {});
 
+    invoke<SavedSession[]>("load_previous_session")
+      .then(sessions => { if (sessions.length > 0) setSavedSessions(sessions); })
+      .catch(() => {});
+
     return () => {
       if (unlistenFn) unlistenFn();
       if (unlistenLog) unlistenLog();
@@ -165,6 +177,15 @@ const handleFork = async (agentId: string) => {
     }
   };
 
+  const handleRestoreSession = async () => {
+    for (const s of savedSessions) {
+      await handleConnect(s.name, s.command, s.args, s.directory || "");
+    }
+    setSavedSessions([]);
+  };
+
+  const handleDismissRestore = () => setSavedSessions([]);
+
   const handleUpdatePlan = (agentId: string, tasks: AgentPlanTask[]) => {
     setAgents(prev => prev.map(a =>
       a.id === agentId ? { ...a, plan: a.plan ? { ...a.plan, tasks } : a.plan, pinnedWaypoints: tasks } : a
@@ -206,10 +227,25 @@ const handleFork = async (agentId: string) => {
           </div>
         </header>
 
+        {savedSessions.length > 0 && (
+          <div className="mx-8 mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-between relative z-10">
+            <div className="flex items-center gap-3">
+              <RotateCcw size={16} className="text-blue-400" />
+              <span className="text-[13px] text-white/80">
+                Previous session found — <span className="text-blue-300 font-medium">{savedSessions.length} agent{savedSessions.length > 1 ? 's' : ''}</span> ({savedSessions.map(s => s.name).join(', ')})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleDismissRestore} className="px-3 py-1.5 text-[12px] text-white/40 hover:text-white/70 transition-colors">Dismiss</button>
+              <button onClick={handleRestoreSession} className="px-4 py-1.5 bg-blue-500 hover:bg-blue-400 text-white text-[12px] font-semibold rounded-lg transition-colors">Restore All</button>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto relative z-0">
-          <Stage 
-            agents={agents} 
-            selectedId={selectedAgentId} 
+          <Stage
+            agents={agents}
+            selectedId={selectedAgentId}
             onInspectAgent={setInspectingAgentId}
           />
         </div>

@@ -4,15 +4,18 @@ mod process_manager;
 
 use mcp_host::{McpRegistry, SharedMcpRegistry, McpTool};
 use memory::{MemoryManager, SharedMemoryManager, Finding};
-use process_manager::{ProcessManager, SharedProcessManager};
+use process_manager::{ProcessManager, SharedProcessManager, SpawnConfig};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::process::Command;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+type SharedAppDataDir = Arc<Mutex<PathBuf>>;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -139,6 +142,12 @@ async fn connect_agent(
         let mut mgr = state.lock().await;
         mgr.register_session_id(agent_id.clone(), session_id);
         mgr.register_stdin(agent_id.clone(), stdin);
+        mgr.register_spawn_config(agent_id.clone(), SpawnConfig {
+            name: name.clone(),
+            command: command.clone(),
+            args: args.clone(),
+            directory: if cwd == "." { None } else { Some(cwd.clone()) },
+        });
     }
 
     let _ = handle.emit("agent-update", AgentUpdate {
@@ -358,6 +367,14 @@ async fn list_tools(state: tauri::State<'_, SharedMcpRegistry>) -> Result<Vec<Mc
 }
 
 #[tauri::command]
+async fn load_previous_session(
+    data_dir: tauri::State<'_, SharedAppDataDir>,
+) -> Result<Vec<SpawnConfig>, String> {
+    let dir = data_dir.lock().await;
+    ProcessManager::load_session(&dir.join("session.json"))
+}
+
+#[tauri::command]
 async fn stop_agent(
     handle: AppHandle,
     state: tauri::State<'_, SharedProcessManager>,
@@ -411,8 +428,11 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 let pm = window.state::<SharedProcessManager>().inner().clone();
+                let data_dir = window.state::<SharedAppDataDir>().inner().clone();
                 tauri::async_runtime::block_on(async {
                     let mut mgr = pm.lock().await;
+                    let dir = data_dir.lock().await;
+                    let _ = mgr.save_session(&dir.join("session.json"));
                     mgr.kill_all().await;
                 });
             }
@@ -423,13 +443,15 @@ pub fn run() {
                 std::fs::create_dir_all(&app_data_dir).unwrap();
             }
 
-            let memory_manager = Arc::new(Mutex::new(MemoryManager::new(app_data_dir).expect("Failed to init memory")));
+            let memory_manager = Arc::new(Mutex::new(MemoryManager::new(app_data_dir.clone()).expect("Failed to init memory")));
             let mcp_registry = Arc::new(Mutex::new(McpRegistry::new()));
             let process_manager = Arc::new(Mutex::new(ProcessManager::new()));
+            let data_dir: SharedAppDataDir = Arc::new(Mutex::new(app_data_dir));
 
             app.manage(memory_manager);
             app.manage(mcp_registry);
             app.manage(process_manager);
+            app.manage(data_dir);
 
             Ok(())
         })
@@ -440,6 +462,7 @@ pub fn run() {
             connect_agent,
             send_agent_input,
             stop_agent,
+            load_previous_session,
             pick_directory
         ])
         .run(tauri::generate_context!())
