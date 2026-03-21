@@ -62,9 +62,13 @@ async fn notify_agent(
     State(state): State<BridgeState>,
     Json(req): Json<NotifyRequest>,
 ) -> Json<NotifyResponse> {
-    let target_id = {
+    let (target_id, sender_name) = {
         let registry = state.registry.lock().await;
-        registry.find_by_name(&req.target_name).map(|a| a.id.clone())
+        let target = registry.find_by_name(&req.target_name).map(|a| a.id.clone());
+        let sender = registry.agents.get(&req.from_agent_id)
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| req.from_agent_id.clone());
+        (target, sender)
     };
 
     let target_id = match target_id {
@@ -97,7 +101,7 @@ async fn notify_agent(
             "sessionId": session_id,
             "prompt": [{
                 "type": "text",
-                "text": format!("[Message from agent '{}'] {}", req.from_agent_id, req.message)
+                "text": format!("[Message from '{}'] {}", sender_name, req.message)
             }]
         },
         "id": req_id
