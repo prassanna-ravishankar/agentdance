@@ -24,7 +24,8 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
             className={cn(
               "group relative bg-white/[0.02] backdrop-blur-xl border border-white/[0.08] rounded-3xl overflow-hidden flex flex-col h-84 transition-all duration-500 cursor-pointer",
               "hover:border-white/20 hover:bg-white/[0.04] hover:-translate-y-1 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] hover:shadow-blue-500/10",
-              selectedId === agent.id && "ring-1 ring-blue-500/50 border-blue-500/30 bg-blue-500/[0.02] shadow-[0_0_30px_rgba(59,130,246,0.15)]"
+              selectedId === agent.id && "ring-1 ring-blue-500/50 border-blue-500/30 bg-blue-500/[0.02] shadow-[0_0_30px_rgba(59,130,246,0.15)]",
+              agent.status === 'disconnected' && "opacity-50"
             )}
           >
             {/* Glossy highlight effect */}
@@ -42,7 +43,9 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
               </div>
               <div className={cn(
                 "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] border backdrop-blur-md",
-                agent.status === 'busy' ? "bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]" : "bg-white/5 text-white/40 border-white/10"
+                agent.status === 'busy' && "bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]",
+                agent.status === 'disconnected' && "bg-rose-500/10 text-rose-400 border-rose-500/30",
+                agent.status !== 'busy' && agent.status !== 'disconnected' && "bg-white/5 text-white/40 border-white/10"
               )}>
                 {agent.status}
               </div>
@@ -79,7 +82,12 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
               <span className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
                   {agent.status === 'busy' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>}
-                  <span className={cn("relative inline-flex rounded-full h-2 w-2", agent.status === 'busy' ? "bg-blue-500" : "bg-white/20")}></span>
+                  <span className={cn(
+                    "relative inline-flex rounded-full h-2 w-2",
+                    agent.status === 'busy' && "bg-blue-500",
+                    agent.status === 'disconnected' && "bg-rose-500",
+                    agent.status !== 'busy' && agent.status !== 'disconnected' && "bg-white/20"
+                  )}></span>
                 </span>
                 {agent.lastActive}
               </span>

@@ -279,6 +279,24 @@ async fn connect_agent(
                 }
             }
         }
+
+        // stdout closed — agent process exited
+        let _ = handle_clone.emit("agent-log", serde_json::json!({
+            "agent_id": id_clone,
+            "stream": "stderr",
+            "line": "[agentdance] process exited"
+        }));
+        let _ = handle_clone.emit("agent-update", AgentUpdate {
+            id: id_clone.clone(),
+            name: None,
+            status: "disconnected".to_string(),
+            plan: None,
+            fork_of: None,
+            message: None,
+        });
+        // Clean up process manager entries
+        let mut mgr = pm.lock().await;
+        let _ = mgr.kill_agent(&id_clone).await;
     });
 
     Ok(agent_id)
