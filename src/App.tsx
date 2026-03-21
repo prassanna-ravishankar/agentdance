@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Stage } from "./components/Stage";
 import { AgentInspector } from "./components/AgentInspector";
 import { SpawnModal } from "./components/SpawnModal";
+import { WelcomeScreen } from "./components/WelcomeScreen";
 import { Background } from "./components/Background";
 import { Agent, AgentPlan, AgentPlanTask, HistoryEntry, CommEvent, SpawnConfig } from "./lib/types";
 import { Plus, Terminal, ChevronDown, ChevronUp, RotateCcw, Radio, ArrowRight, Command, Send } from "lucide-react";
@@ -376,12 +377,16 @@ function App() {
         )}
 
         <div className="flex-1 overflow-auto relative z-0">
-          <Stage
-            agents={agents}
-            selectedId={selectedAgentId}
-            orchestratorId={orchestratorId}
-            onInspectAgent={setInspectingAgentId}
-          />
+          {agents.length === 0 && savedSessions.length === 0 ? (
+            <WelcomeScreen onSpawn={handleConnect} />
+          ) : (
+            <Stage
+              agents={agents}
+              selectedId={selectedAgentId}
+              orchestratorId={orchestratorId}
+              onInspectAgent={setInspectingAgentId}
+            />
+          )}
         </div>
       </main>
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { Agent, AgentPlan, AgentPlanTask } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, Circle, Loader2, AlertCircle, Radio, Crown } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, AlertCircle, Radio, Crown, Plus, Users } from "lucide-react";
 import { cn } from "../lib/cn";
 import { getPlanProgress } from "../lib/planUtils";
 
@@ -112,6 +112,24 @@ export function Stage({ agents, selectedId, orchestratorId, onInspectAgent }: St
             </div>
           </motion.div>
         ))}
+        {agents.length === 1 && (
+          <motion.div
+            key="hint-add-more"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2 }}
+            className="flex flex-col items-center justify-center h-84 rounded-3xl border border-dashed border-white/[0.08] text-center space-y-4 p-8"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+              <Users className="text-purple-400" size={24} />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[14px] font-medium text-white/50">Add another agent</p>
+              <p className="text-[12px] text-white/25 max-w-[200px]">Agents automatically discover each other and can communicate</p>
+            </div>
+            <p className="text-[11px] text-white/15">Click <Plus size={10} className="inline" /> in the header</p>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
