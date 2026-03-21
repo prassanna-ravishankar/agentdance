@@ -8,6 +8,7 @@ import { motion } from "framer-motion";
 interface AgentInspectorProps {
   agent: Agent;
   allAgents: Agent[];
+  isOrchestrator: boolean;
   onClose: () => void;
   onUpdatePlan: (agentId: string, tasks: AgentPlanTask[]) => void;
   onFork: (agentId: string) => void;
@@ -17,7 +18,7 @@ interface AgentInspectorProps {
   onDelegate: (fromId: string, targetName: string, task: string) => void;
 }
 
-export function AgentInspector({ agent, allAgents, onClose, onUpdatePlan, onFork, onSendCommand, onStop, onSetOrchestrator, onDelegate }: AgentInspectorProps) {
+export function AgentInspector({ agent, allAgents, isOrchestrator, onClose, onUpdatePlan, onFork, onSendCommand, onStop, onSetOrchestrator, onDelegate }: AgentInspectorProps) {
   const [editedTasks, setEditedTasks] = useState<AgentPlanTask[]>(
     agent.pinnedWaypoints?.map(t => ({ ...t }))
     ?? agent.plan?.tasks.map(t => ({ ...t }))
@@ -89,7 +90,7 @@ export function AgentInspector({ agent, allAgents, onClose, onUpdatePlan, onFork
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold text-white/90 tracking-tight">Steering: {agent.name}</h2>
-                {agent.isOrchestrator && (
+                {isOrchestrator && (
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold">
                     <Crown size={10} /> Orchestrator
                   </span>
@@ -171,7 +172,7 @@ export function AgentInspector({ agent, allAgents, onClose, onUpdatePlan, onFork
           )}
 
           {/* Delegation panel (orchestrator only) */}
-          {agent.isOrchestrator && (
+          {isOrchestrator && (
             <div className="space-y-4">
               <h3 className="text-[10px] font-bold text-amber-400/80 uppercase tracking-[0.2em] ml-1 flex items-center gap-1.5">
                 <Crown size={10} /> Delegate Task
@@ -187,15 +188,13 @@ export function AgentInspector({ agent, allAgents, onClose, onUpdatePlan, onFork
                     <option key={a.id} value={a.name}>{a.name}</option>
                   ))}
                 </select>
-                <div className="relative">
-                  <textarea
-                    value={delegateTask}
-                    onChange={e => setDelegateTask(e.target.value)}
-                    placeholder="Describe the task to delegate..."
-                    rows={2}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-4 text-[13px] text-white/80 outline-none focus:border-amber-500/40 resize-none"
-                  />
-                </div>
+                <textarea
+                  value={delegateTask}
+                  onChange={e => setDelegateTask(e.target.value)}
+                  placeholder="Describe the task to delegate..."
+                  rows={2}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-4 text-[13px] text-white/80 outline-none focus:border-amber-500/40 resize-none"
+                />
                 <button
                   onClick={() => {
                     if (delegateTarget && delegateTask.trim()) {
@@ -252,7 +251,7 @@ export function AgentInspector({ agent, allAgents, onClose, onUpdatePlan, onFork
               <Square size={14} fill="currentColor" />
               Stop Agent
             </button>
-            {!agent.isOrchestrator && (
+            {!isOrchestrator && (
               <button
                 onClick={() => onSetOrchestrator(agent.id)}
                 className="flex items-center gap-2 px-5 py-2.5 text-[13px] font-semibold text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-xl transition-all border border-amber-500/20"

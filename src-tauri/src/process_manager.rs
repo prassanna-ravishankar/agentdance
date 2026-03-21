@@ -47,6 +47,7 @@ impl ProcessManager {
         self.session_ids.insert(agent_id, session_id);
     }
 
+    #[allow(dead_code)]
     pub fn get_session_id(&self, agent_id: &str) -> Option<&String> {
         self.session_ids.get(agent_id)
     }
@@ -64,6 +65,26 @@ impl ProcessManager {
         } else {
             Err(format!("No active process found for agent ID: {}", id))
         }
+    }
+
+    /// Build and send a session/prompt JSON-RPC message to an agent.
+    /// Combines session lookup + envelope construction + send in one call.
+    pub async fn send_prompt(&mut self, agent_id: &str, text: &str) -> Result<(), String> {
+        let session_id = self.session_ids.get(agent_id)
+            .ok_or_else(|| format!("No session ID for agent: {}", agent_id))?
+            .clone();
+        let req_id = crate::next_id();
+        let json_rpc = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{ "type": "text", "text": text }]
+            },
+            "id": req_id
+        });
+        let msg = serde_json::to_string(&json_rpc).map_err(|e| e.to_string())?;
+        self.send_input(agent_id.to_string(), msg).await
     }
 
     pub async fn kill_agent(&mut self, id: &str) -> Result<(), String> {

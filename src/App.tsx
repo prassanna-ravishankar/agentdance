@@ -55,6 +55,7 @@ function App() {
   const [logTab, setLogTab] = useState<'debug' | 'mesh'>('mesh');
   const [comms, setComms] = useState<CommEvent[]>([]);
   const [savedSessions, setSavedSessions] = useState<SpawnConfig[]>([]);
+  const [orchestratorId, setOrchestratorId] = useState<string | null>(null);
   const [omnibarOpen, setOmnibarOpen] = useState(false);
   const [omnibarText, setOmnibarText] = useState("");
   const omnibarRef = useRef<HTMLInputElement>(null);
@@ -115,7 +116,6 @@ function App() {
               message: payload.message,
               history: [],
               peerMessageCount: 0,
-              isOrchestrator: false,
               plan: mapPlanPayload(payload.plan),
             };
             return [...prev, newAgent];
@@ -153,8 +153,7 @@ function App() {
 
     let unlistenOrch: (() => void) | undefined;
     listen<{ agent_id: string }>("orchestrator-changed", (event) => {
-      const orchId = event.payload.agent_id;
-      setAgents(prev => prev.map(a => ({ ...a, isOrchestrator: a.id === orchId })));
+      setOrchestratorId(event.payload.agent_id);
     }).then(fn => { unlistenOrch = fn; }).catch(() => {});
 
     let unlistenSpawn: (() => void) | undefined;
@@ -249,11 +248,10 @@ function App() {
 
   const handleDelegate = async (fromId: string, targetName: string, task: string) => {
     const from = agents.find(a => a.id === fromId);
-    const message = `[Task delegated by orchestrator '${from?.name || fromId}'] ${task}`;
     const target = agents.find(a => a.name === targetName);
-    if (target) {
-      await handleSendCommand(target.id, message);
-    }
+    if (!target) return;
+    const message = `[Task delegated by orchestrator '${from?.name || fromId}'] ${task}`;
+    await handleSendCommand(target.id, message);
     setInspectingAgentId(null);
   };
 
@@ -381,6 +379,7 @@ function App() {
           <Stage
             agents={agents}
             selectedId={selectedAgentId}
+            orchestratorId={orchestratorId}
             onInspectAgent={setInspectingAgentId}
           />
         </div>
@@ -390,6 +389,7 @@ function App() {
         <AgentInspector
           agent={inspectingAgent}
           allAgents={agents}
+          isOrchestrator={inspectingAgent.id === orchestratorId}
           onClose={() => setInspectingAgentId(null)}
           onUpdatePlan={handleUpdatePlan}
           onFork={handleFork}

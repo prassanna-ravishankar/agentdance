@@ -129,26 +129,13 @@ fn resolve_target_and_sender(
     (target, sender)
 }
 
-/// Helper: send a prompt to an agent's stdin. Returns Ok(()) or error string.
 async fn send_prompt_to_agent(
     pm: &Arc<Mutex<ProcessManager>>,
     target_id: &str,
-    session_id: &str,
     text: &str,
 ) -> Result<(), String> {
-    let req_id = crate::next_id();
-    let json_rpc = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "session/prompt",
-        "params": {
-            "sessionId": session_id,
-            "prompt": [{ "type": "text", "text": text }]
-        },
-        "id": req_id
-    });
-    let message_str = serde_json::to_string(&json_rpc).unwrap();
     let mut mgr = pm.lock().await;
-    mgr.send_input(target_id.to_string(), message_str).await
+    mgr.send_prompt(target_id, text).await
 }
 
 async fn notify_agent(
@@ -168,21 +155,8 @@ async fn notify_agent(
         }),
     };
 
-    let session_id = {
-        let pm = state.process_manager.lock().await;
-        pm.get_session_id(&target_id).cloned()
-    };
-
-    let session_id = match session_id {
-        Some(id) => id,
-        None => return Json(NotifyResponse {
-            success: false,
-            error: Some(format!("Agent '{}' has no active session", req.target_name)),
-        }),
-    };
-
     let text = format!("[Message from '{}'] {}", sender_name, req.message);
-    match send_prompt_to_agent(&state.process_manager, &target_id, &session_id, &text).await {
+    match send_prompt_to_agent(&state.process_manager, &target_id, &text).await {
         Ok(()) => {
             let _ = state.app_handle.emit("agent-comm", CommEvent {
                 from_name: sender_name, from_id: req.from_agent_id,
@@ -213,20 +187,6 @@ async fn ask_agent(
         }),
     };
 
-    let session_id = {
-        let pm = state.process_manager.lock().await;
-        pm.get_session_id(&target_id).cloned()
-    };
-
-    let session_id = match session_id {
-        Some(id) => id,
-        None => return Json(AskResponse {
-            success: false,
-            response: None,
-            error: Some(format!("Agent '{}' has no active session", req.target_name)),
-        }),
-    };
-
     // Register a pending query channel before sending the prompt
     let rx = {
         let mut pq = state.pending_queries.lock().await;
@@ -239,7 +199,7 @@ async fn ask_agent(
         to_name: req.target_name.clone(), to_id: target_id.clone(),
         kind: "ask".to_string(), message: req.question.clone(), timestamp: now_ms(),
     });
-    if let Err(e) = send_prompt_to_agent(&state.process_manager, &target_id, &session_id, &text).await {
+    if let Err(e) = send_prompt_to_agent(&state.process_manager, &target_id, &text).await {
         // Clean up the pending query
         let mut pq = state.pending_queries.lock().await;
         pq.resolve(&target_id, String::new());
@@ -302,19 +262,13 @@ async fn broadcast_to_agents(
     let mut sent_to = Vec::new();
 
     for (agent_id, agent_name) in targets {
-        let session_id = {
-            let pm = state.process_manager.lock().await;
-            pm.get_session_id(&agent_id).cloned()
-        };
-        if let Some(sid) = session_id {
-            if send_prompt_to_agent(&state.process_manager, &agent_id, &sid, &text).await.is_ok() {
-                sent_to.push(agent_name.clone());
-                let _ = state.app_handle.emit("agent-comm", CommEvent {
-                    from_name: sender_name.clone(), from_id: req.from_agent_id.clone(),
-                    to_name: agent_name, to_id: agent_id,
-                    kind: "broadcast".to_string(), message: req.message.clone(), timestamp: now_ms(),
-                });
-            }
+        if send_prompt_to_agent(&state.process_manager, &agent_id, &text).await.is_ok() {
+            sent_to.push(agent_name.clone());
+            let _ = state.app_handle.emit("agent-comm", CommEvent {
+                from_name: sender_name.clone(), from_id: req.from_agent_id.clone(),
+                to_name: agent_name, to_id: agent_id,
+                kind: "broadcast".to_string(), message: req.message.clone(), timestamp: now_ms(),
+            });
         }
     }
 

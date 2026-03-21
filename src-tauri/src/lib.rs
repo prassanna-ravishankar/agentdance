@@ -352,14 +352,19 @@ async fn connect_agent(
             message: None,
         });
         // Clean up + notify orchestrator
-        let agent_name = {
+        let (agent_name, was_orchestrator) = {
             let r = reg.lock().await;
-            r.agents.get(&id_clone).map(|a| a.name.clone()).unwrap_or_default()
+            let name = r.agents.get(&id_clone).map(|a| a.name.clone()).unwrap_or_default();
+            let was_orch = r.orchestrator_id() == Some(id_clone.as_str());
+            (name, was_orch)
         };
         let mut mgr = pm.lock().await;
         let _ = mgr.kill_agent(&id_clone).await;
         drop(mgr);
         reg.lock().await.remove(&id_clone);
+        if was_orchestrator {
+            let _ = handle_clone.emit("orchestrator-changed", serde_json::json!({"agent_id": serde_json::Value::Null}));
+        }
         notify_orchestrator(&reg, &pm, &format!("Agent '{}' has disconnected.", agent_name)).await;
     });
 
@@ -368,33 +373,13 @@ async fn connect_agent(
 
 #[tauri::command]
 async fn send_agent_input(
-    handle: AppHandle,
+    _handle: AppHandle,
     state: tauri::State<'_, SharedProcessManager>,
     agent_id: String,
     message: String
 ) -> Result<(), String> {
-    let session_id = {
-        let manager = state.lock().await;
-        manager.get_session_id(&agent_id).cloned()
-    };
-
-    let session_id = session_id.ok_or_else(|| format!("No session ID for agent: {}", agent_id))?;
-
-    let req_id = next_id();
-    let json_rpc = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "session/prompt",
-        "params": {
-            "sessionId": session_id,
-            "prompt": [{ "type": "text", "text": message }]
-        },
-        "id": req_id
-    });
-
-    let message_string = serde_json::to_string(&json_rpc).map_err(|e| e.to_string())?;
-    let _ = handle.emit("agent-log", serde_json::json!({"agent_id": agent_id, "stream": "stdin", "line": message_string}));
-    let mut manager = state.lock().await;
-    manager.send_input(agent_id, message_string).await
+    let mut mgr = state.lock().await;
+    mgr.send_prompt(&agent_id, &message).await
 }
 
 #[tauri::command]
@@ -436,31 +421,16 @@ async fn notify_orchestrator(
     pm: &SharedProcessManager,
     message: &str,
 ) {
-    let (orch_id, session_id) = {
+    let orch_id = {
         let reg = registry.lock().await;
-        let orch_id = match reg.orchestrator_id() {
+        match reg.orchestrator_id() {
             Some(id) => id.to_string(),
             None => return,
-        };
-        let mgr = pm.lock().await;
-        let sid = mgr.get_session_id(&orch_id).cloned();
-        (orch_id, sid)
+        }
     };
-    if let Some(sid) = session_id {
-        let req_id = next_id();
-        let json_rpc = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "session/prompt",
-            "params": {
-                "sessionId": sid,
-                "prompt": [{ "type": "text", "text": format!("[Orchestrator notification] {}", message) }]
-            },
-            "id": req_id
-        });
-        let msg = serde_json::to_string(&json_rpc).unwrap();
-        let mut mgr = pm.lock().await;
-        let _ = mgr.send_input(orch_id, msg).await;
-    }
+    let text = format!("[Orchestrator notification] {}", message);
+    let mut mgr = pm.lock().await;
+    let _ = mgr.send_prompt(&orch_id, &text).await;
 }
 
 #[tauri::command]
@@ -477,32 +447,18 @@ async fn set_orchestrator(
         }
         reg.agent_summary()
     };
-    // Send the orchestrator its initial context
-    let session_id = {
-        let mgr = state.lock().await;
-        mgr.get_session_id(&agent_id).cloned()
-    };
-    if let Some(sid) = session_id {
-        let context = format!(
-            "[You are now the orchestrator] You coordinate the work of all agents. \
-             Delegate tasks, monitor progress, and ensure agents collaborate effectively.\n\n\
-             {}\n\n\
-             You have access to: list_agents, notify_agent, ask_agent, broadcast, \
-             spawn_sub_agent, write_shared_memory, read_shared_memory.\n\
-             You will be automatically notified when agents join or leave.",
-            summary
-        );
-        let req_id = next_id();
-        let json_rpc = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "session/prompt",
-            "params": { "sessionId": sid, "prompt": [{ "type": "text", "text": context }] },
-            "id": req_id
-        });
-        let msg = serde_json::to_string(&json_rpc).unwrap();
-        let mut mgr = state.lock().await;
-        let _ = mgr.send_input(agent_id.clone(), msg).await;
-    }
+    let context = format!(
+        "[You are now the orchestrator] You coordinate the work of all agents. \
+         Delegate tasks, monitor progress, and ensure agents collaborate effectively.\n\n\
+         {}\n\n\
+         You have access to: list_agents, notify_agent, ask_agent, broadcast, \
+         spawn_sub_agent, write_shared_memory, read_shared_memory.\n\
+         You will be automatically notified when agents join or leave.",
+        summary
+    );
+    let mut mgr = state.lock().await;
+    let _ = mgr.send_prompt(&agent_id, &context).await;
+    drop(mgr);
     let _ = handle.emit("orchestrator-changed", serde_json::json!({"agent_id": agent_id}));
     Ok(())
 }

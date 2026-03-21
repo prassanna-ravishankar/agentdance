@@ -20,10 +20,11 @@ function statusDotClass(status: string) {
 interface StageProps {
   agents: Agent[];
   selectedId: string | null;
+  orchestratorId: string | null;
   onInspectAgent: (id: string) => void;
 }
 
-export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
+export function Stage({ agents, selectedId, orchestratorId, onInspectAgent }: StageProps) {
   return (
     <div data-testid="stage" className="p-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
       <AnimatePresence>
@@ -59,7 +60,7 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
                     )}
                   </div>
                   <p className="text-[10px] text-white/40 tracking-[0.15em] uppercase mt-1 font-semibold flex items-center gap-1.5">
-                    {agent.isOrchestrator && <Crown size={10} className="text-amber-400" />}
+                    {agent.id === orchestratorId && <Crown size={10} className="text-amber-400" />}
                     {agent.role}
                   </p>
                 </div>

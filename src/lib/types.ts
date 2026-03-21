@@ -43,7 +43,6 @@ export interface Agent {
   message?: string;
   history: HistoryEntry[];
   peerMessageCount: number;
-  isOrchestrator: boolean;
 }
 
 export interface SpawnConfig {
