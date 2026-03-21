@@ -4,8 +4,8 @@ import { Stage } from "./components/Stage";
 import { AgentInspector } from "./components/AgentInspector";
 import { SpawnModal } from "./components/SpawnModal";
 import { Background } from "./components/Background";
-import { Agent, AgentPlanTask, HistoryEntry } from "./lib/types";
-import { Plus, Terminal, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { Agent, AgentPlanTask, HistoryEntry, CommEvent } from "./lib/types";
+import { Plus, Terminal, ChevronDown, ChevronUp, RotateCcw, Radio, ArrowRight, MessageCircle } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -44,8 +44,11 @@ function App() {
   const [isSpawnModalOpen, setIsSpawnModalOpen] = useState(false);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [logsOpen, setLogsOpen] = useState(true);
+  const [logTab, setLogTab] = useState<'debug' | 'mesh'>('mesh');
+  const [comms, setComms] = useState<CommEvent[]>([]);
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const commsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let unlistenFn: (() => void) | undefined;
@@ -119,6 +122,22 @@ function App() {
       setLogs(prev => [...prev.slice(-200), event.payload]);
     }).then(fn => { unlistenLog = fn; }).catch(() => {});
 
+    let unlistenComm: (() => void) | undefined;
+    listen<CommEvent>("agent-comm", (event) => {
+      const comm = event.payload;
+      setComms(prev => [...prev.slice(-200), comm]);
+      // Inject into receiving agent's history
+      setAgents(prev => prev.map(a => {
+        if (a.id === comm.to_id) {
+          return { ...a, history: [...a.history, {
+            role: 'peer' as const, text: comm.message, timestamp: comm.timestamp,
+            peerName: comm.from_name, commKind: comm.kind,
+          }]};
+        }
+        return a;
+      }));
+    }).then(fn => { unlistenComm = fn; }).catch(() => {});
+
     invoke<SavedSession[]>("load_previous_session")
       .then(sessions => { if (sessions.length > 0) setSavedSessions(sessions); })
       .catch(() => {});
@@ -126,12 +145,14 @@ function App() {
     return () => {
       if (unlistenFn) unlistenFn();
       if (unlistenLog) unlistenLog();
+      if (unlistenComm) unlistenComm();
     };
   }, []);
 
   useEffect(() => {
-    if (logsOpen) logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs, logsOpen]);
+    if (logsOpen && logTab === 'debug') logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (logsOpen && logTab === 'mesh') commsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs, comms, logsOpen, logTab]);
 
   const handleConnect = async (name: string, command: string, args: string[], directory: string) => {
     try {
@@ -279,17 +300,50 @@ function App() {
         />
       )}
 
-      {/* Debug log panel */}
+      {/* Bottom panel with tabs */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-black/90 backdrop-blur font-mono text-[11px]">
-        <div
-          className="flex items-center gap-2 px-4 py-1.5 cursor-pointer hover:bg-white/5 select-none"
-          onClick={() => setLogsOpen(o => !o)}
-        >
-          <Terminal size={12} className="text-white/40" />
-          <span className="text-white/40 uppercase tracking-widest text-[10px]">ACP Debug Log</span>
-          <span className="ml-auto text-white/20">{logsOpen ? <ChevronDown size={12} /> : <ChevronUp size={12} />}</span>
+        <div className="flex items-center px-4 py-1.5 select-none gap-1">
+          <button
+            onClick={() => { setLogTab('mesh'); setLogsOpen(true); }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${logTab === 'mesh' && logsOpen ? 'bg-purple-500/20 text-purple-300' : 'text-white/40 hover:text-white/60'}`}
+          >
+            <Radio size={11} />
+            <span className="uppercase tracking-widest text-[10px]">Mesh</span>
+            {comms.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-purple-500/30 text-purple-300 text-[9px] font-bold">{comms.length}</span>}
+          </button>
+          <button
+            onClick={() => { setLogTab('debug'); setLogsOpen(true); }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${logTab === 'debug' && logsOpen ? 'bg-white/10 text-white/60' : 'text-white/40 hover:text-white/60'}`}
+          >
+            <Terminal size={11} />
+            <span className="uppercase tracking-widest text-[10px]">ACP Debug</span>
+          </button>
+          <span className="ml-auto cursor-pointer text-white/20 hover:text-white/40" onClick={() => setLogsOpen(o => !o)}>
+            {logsOpen ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          </span>
         </div>
-        {logsOpen && (
+        {logsOpen && logTab === 'mesh' && (
+          <div className="h-40 overflow-y-auto px-4 pb-2 space-y-1">
+            {comms.length === 0 && <div className="text-white/20 py-2">No inter-agent messages yet. Agents will communicate once they discover each other.</div>}
+            {comms.map((c, i) => (
+              <div key={i} className="flex items-center gap-2 leading-5">
+                <span className="text-white/20 text-[10px] shrink-0 w-16">{new Date(c.timestamp).toLocaleTimeString()}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${
+                  c.kind === 'notify' ? 'bg-blue-500/20 text-blue-300' :
+                  c.kind === 'ask' ? 'bg-amber-500/20 text-amber-300' :
+                  c.kind === 'broadcast' ? 'bg-purple-500/20 text-purple-300' :
+                  'bg-emerald-500/20 text-emerald-300'
+                }`}>{c.kind}</span>
+                <span className="text-white/60 font-semibold shrink-0">{c.from_name}</span>
+                <ArrowRight size={10} className="text-white/20 shrink-0" />
+                <span className="text-white/60 font-semibold shrink-0">{c.to_name}</span>
+                <span className="text-white/40 truncate">{c.message.length > 80 ? c.message.slice(0, 80) + '…' : c.message}</span>
+              </div>
+            ))}
+            <div ref={commsEndRef} />
+          </div>
+        )}
+        {logsOpen && logTab === 'debug' && (
           <div className="h-40 overflow-y-auto px-4 pb-2 space-y-0.5">
             {logs.length === 0 && <div className="text-white/20 py-2">No log lines yet. Spawn an agent to see traffic.</div>}
             {logs.map((l, i) => (
