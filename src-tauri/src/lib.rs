@@ -394,25 +394,49 @@ async fn stop_agent(
 }
 
 #[tauri::command]
-fn fork_session(handle: AppHandle, agent_id: String) {
-    let fork_id = format!("{}-fork-{}", agent_id, &uuid::Uuid::new_v4().to_string()[..4]);
-    let update = AgentUpdate {
+async fn fork_session(
+    handle: AppHandle,
+    state: tauri::State<'_, SharedProcessManager>,
+    agent_id: String,
+    context: Option<String>,
+) -> Result<String, String> {
+    let config = {
+        let mgr = state.lock().await;
+        mgr.get_spawn_config(&agent_id)
+            .cloned()
+            .ok_or_else(|| format!("No spawn config for agent: {}", agent_id))?
+    };
+
+    let fork_name = format!("{} (Fork)", config.name);
+    let fork_id = connect_agent(
+        handle.clone(),
+        fork_name,
+        config.command,
+        config.args,
+        config.directory,
+        state.clone(),
+    ).await?;
+
+    // Send context prompt to the forked agent so it picks up where the parent was
+    let ctx = context.unwrap_or_else(|| format!(
+        "You are a forked exploration from agent {}. \
+         Take an alternative approach to the task at hand. \
+         Explore different solutions or strategies than the original agent.",
+        agent_id
+    ));
+    send_agent_input(handle.clone(), state, fork_id.clone(), ctx).await?;
+
+    // Mark fork relationship
+    let _ = handle.emit("agent-update", AgentUpdate {
         id: fork_id.clone(),
         name: None,
         status: "busy".to_string(),
-        plan: Some(AgentPlan {
-            id: format!("p-{}", fork_id),
-            agent_id: fork_id.clone(),
-            title: "Forked Trajectory".to_string(),
-            tasks: vec![
-                AgentPlanTask { id: "t1".to_string(), title: "Explore alternative approach A".to_string(), status: "running".to_string() },
-                AgentPlanTask { id: "t2".to_string(), title: "Compare with original baseline".to_string(), status: "pending".to_string() },
-            ],
-        }),
+        plan: None,
         fork_of: Some(agent_id),
         message: None,
-    };
-    handle.emit("agent-update", update).unwrap();
+    });
+
+    Ok(fork_id)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

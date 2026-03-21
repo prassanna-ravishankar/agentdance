@@ -147,9 +147,19 @@ function App() {
     }
   };
 
-const handleFork = async (agentId: string) => {
+  const handleFork = async (agentId: string) => {
     try {
-      await invoke("fork_session", { agentId });
+      const agent = agents.find(a => a.id === agentId);
+      const contextParts: string[] = [];
+      if (agent?.plan) {
+        const tasks = agent.plan.tasks.map((t, i) => `${i + 1}. [${t.status}] ${t.title}`).join('\n');
+        contextParts.push(`The original agent's plan was:\n${tasks}`);
+      }
+      if (agent?.message) {
+        contextParts.push(`The original agent's last message was:\n${agent.message.slice(0, 1000)}`);
+      }
+      contextParts.push("Take an alternative approach to the task. Explore different solutions or strategies.");
+      await invoke("fork_session", { agentId, context: contextParts.join('\n\n') });
       setInspectingAgentId(null);
     } catch (e) {
       console.error("Failed to fork session", e);
