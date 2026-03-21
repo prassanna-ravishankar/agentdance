@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Zap, FolderOpen, ArrowRight, Sparkles, Users, MessageSquare } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -17,8 +17,11 @@ export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
   const handleSpawn = async () => {
     if (!directory) return;
     setSpawning(true);
-    await onSpawn("Claude Code", "npx", ["@zed-industries/claude-agent-acp"], directory);
-    setSpawning(false);
+    try {
+      await onSpawn("Claude Code", "npx", ["@zed-industries/claude-agent-acp"], directory);
+    } finally {
+      setSpawning(false);
+    }
   };
 
   if (step === 'pick-dir') {
@@ -41,9 +44,8 @@ export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
             <p className="text-[14px] text-white/40">Pick a project directory. The agent will have full access to read, edit, and run commands there.</p>
           </div>
 
-          <div className="space-y-3">
-            <div className="relative flex items-center">
-              <input
+          <div className="relative flex items-center">
+            <input
                 value={directory}
                 onChange={e => setDirectory(e.target.value)}
                 placeholder="/path/to/your/project"
@@ -61,7 +63,6 @@ export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
               >
                 Browse
               </button>
-            </div>
           </div>
 
           <button
