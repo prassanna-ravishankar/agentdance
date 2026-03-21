@@ -1,12 +1,14 @@
 mod bridge_api;
 mod mcp_host;
 mod memory;
+mod pending_queries;
 mod process_manager;
 mod registry;
 
 use mcp_host::{McpRegistry, SharedMcpRegistry, McpTool};
 use memory::{MemoryManager, SharedMemoryManager, Finding};
 use bridge_api::BridgeState;
+use pending_queries::{PendingQueries, SharedPendingQueries};
 use process_manager::{ProcessManager, SharedProcessManager, SpawnConfig};
 use registry::{AgentRegistry, SharedAgentRegistry};
 use serde::{Deserialize, Serialize};
@@ -63,6 +65,7 @@ async fn connect_agent(
     state: tauri::State<'_, SharedProcessManager>,
     registry: tauri::State<'_, SharedAgentRegistry>,
     bridge_port: tauri::State<'_, SharedBridgePort>,
+    pending: tauri::State<'_, SharedPendingQueries>,
 ) -> Result<String, String> {
     let mut cmd = Command::new(&command);
     cmd.args(&args);
@@ -188,6 +191,7 @@ async fn connect_agent(
     let handle_clone = handle.clone();
     let state_clone = state.inner().clone();
     let registry_clone = registry.inner().clone();
+    let pending_clone = pending.inner().clone();
 
     let id_for_stderr = agent_id.clone();
     let handle_for_stderr = handle.clone();
@@ -206,6 +210,7 @@ async fn connect_agent(
         let mut message_buf = String::new();
         let pm = state_clone;
         let reg = registry_clone;
+        let pq = pending_clone;
 
         while let Ok(Some(line)) = reader.next_line().await {
             let _ = handle_clone.emit("agent-log", serde_json::json!({
@@ -226,11 +231,16 @@ async fn connect_agent(
                     let h = handle_clone.clone();
                     let id = id_clone.clone();
                     let reg2 = reg.clone();
+                    let pq2 = pq.clone();
                     let msg = if message_buf.is_empty() { None } else { Some(message_buf.clone()) };
                     message_buf.clear();
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                         reg2.lock().await.update_status(&id, "idle");
+                        // Resolve any pending synchronous query
+                        if let Some(ref response_text) = msg {
+                            pq2.lock().await.resolve(&id, response_text.clone());
+                        }
                         let _ = h.emit("agent-update", AgentUpdate {
                             id,
                             name: None,
@@ -435,6 +445,7 @@ async fn fork_session(
     state: tauri::State<'_, SharedProcessManager>,
     registry: tauri::State<'_, SharedAgentRegistry>,
     bridge_port: tauri::State<'_, SharedBridgePort>,
+    pending: tauri::State<'_, SharedPendingQueries>,
     agent_id: String,
     context: Option<String>,
 ) -> Result<String, String> {
@@ -455,6 +466,7 @@ async fn fork_session(
         state.clone(),
         registry.clone(),
         bridge_port.clone(),
+        pending.clone(),
     ).await?;
 
     // Send context prompt to the forked agent so it picks up where the parent was
@@ -511,12 +523,14 @@ pub fn run() {
             let mcp_registry = Arc::new(Mutex::new(McpRegistry::new()));
             let process_manager: SharedProcessManager = Arc::new(Mutex::new(ProcessManager::new()));
             let agent_registry: SharedAgentRegistry = Arc::new(Mutex::new(AgentRegistry::new()));
+            let pending_queries: SharedPendingQueries = Arc::new(Mutex::new(PendingQueries::new()));
             let data_dir: SharedAppDataDir = Arc::new(Mutex::new(app_data_dir));
 
             // Start bridge HTTP API for inter-agent communication
             let bridge_state = BridgeState {
                 registry: agent_registry.clone(),
                 process_manager: process_manager.clone(),
+                pending_queries: pending_queries.clone(),
             };
             let port = tauri::async_runtime::block_on(bridge_api::start_bridge_api(bridge_state));
             let bridge_port: SharedBridgePort = Arc::new(Mutex::new(port));
@@ -528,6 +542,7 @@ pub fn run() {
             app.manage(agent_registry);
             app.manage(data_dir);
             app.manage(bridge_port);
+            app.manage(pending_queries);
 
             Ok(())
         })

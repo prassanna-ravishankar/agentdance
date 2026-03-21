@@ -27,7 +27,7 @@ const TOOLS = [
   },
   {
     name: "notify_agent",
-    description: "Send a fire-and-forget message to another agent by name. Use for delegation, status updates, or requests. The target agent receives your message as a prompt.",
+    description: "Send a fire-and-forget message to another agent by name. Use for delegation, status updates, or requests. The target agent receives your message as a prompt. Does not wait for a response.",
     inputSchema: {
       type: "object",
       properties: {
@@ -35,6 +35,29 @@ const TOOLS = [
         message: { type: "string", description: "The message to send" },
       },
       required: ["target_name", "message"],
+    },
+  },
+  {
+    name: "ask_agent",
+    description: "Send a question to another agent and wait for their response. Blocks until the target agent completes their response or times out (60s). Use when you need an answer before proceeding.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target_name: { type: "string", description: "Name of the agent to ask" },
+        question: { type: "string", description: "The question to ask" },
+      },
+      required: ["target_name", "question"],
+    },
+  },
+  {
+    name: "broadcast",
+    description: "Send a message to all other agents. Useful for announcements like 'I pushed changes, everyone pull' or 'who knows about X?'. Fire-and-forget to all peers.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The message to broadcast" },
+      },
+      required: ["message"],
     },
   },
 ];
@@ -68,7 +91,7 @@ async function handleRequest(msg) {
     return;
   }
 
-  if (method === "notifications/initialized") return; // no response needed
+  if (method === "notifications/initialized") return;
 
   if (method === "tools/list") {
     send({ jsonrpc: "2.0", id, result: { tools: TOOLS } });
@@ -102,6 +125,26 @@ async function handleRequest(msg) {
         result = data.success
           ? `Message sent to ${args.target_name}`
           : `Failed: ${data.error}`;
+      } else if (toolName === "ask_agent") {
+        const data = await callApi("/ask", {
+          from_agent_id: AGENT_ID,
+          target_name: args.target_name,
+          question: args.question,
+        });
+        if (data.success) {
+          result = data.response;
+        } else {
+          result = `Failed: ${data.error}`;
+        }
+      } else if (toolName === "broadcast") {
+        const data = await callApi("/broadcast", {
+          from_agent_id: AGENT_ID,
+          message: args.message,
+          exclude_self: true,
+        });
+        result = data.sent_to.length > 0
+          ? `Broadcast sent to: ${data.sent_to.join(", ")}`
+          : "No other agents to broadcast to";
       } else {
         send({
           jsonrpc: "2.0",
