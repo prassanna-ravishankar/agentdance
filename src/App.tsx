@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Stage } from "./components/Stage";
 import { AgentInspector } from "./components/AgentInspector";
 import { SpawnModal } from "./components/SpawnModal";
 import { Background } from "./components/Background";
 import { Agent, AgentPlanTask, HistoryEntry, CommEvent } from "./lib/types";
-import { Plus, Terminal, ChevronDown, ChevronUp, RotateCcw, Radio, ArrowRight, MessageCircle } from "lucide-react";
+import { Plus, Terminal, ChevronDown, ChevronUp, RotateCcw, Radio, ArrowRight, Command, Send } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -47,8 +47,28 @@ function App() {
   const [logTab, setLogTab] = useState<'debug' | 'mesh'>('mesh');
   const [comms, setComms] = useState<CommEvent[]>([]);
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+  const [omnibarOpen, setOmnibarOpen] = useState(false);
+  const [omnibarText, setOmnibarText] = useState("");
+  const omnibarRef = useRef<HTMLInputElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const commsEndRef = useRef<HTMLDivElement>(null);
+
+  // Cmd+K to toggle omnibar
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setOmnibarOpen(o => !o);
+      }
+      if (e.key === 'Escape') setOmnibarOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (omnibarOpen) omnibarRef.current?.focus();
+  }, [omnibarOpen]);
 
   useEffect(() => {
     let unlistenFn: (() => void) | undefined;
@@ -217,6 +237,22 @@ function App() {
 
   const handleDismissRestore = () => setSavedSessions([]);
 
+  const handleGodPrompt = useCallback(async () => {
+    const msg = omnibarText.trim();
+    if (!msg) return;
+    const running = agents.filter(a => a.status !== 'disconnected');
+    for (const agent of running) {
+      try {
+        await invoke("send_agent_input", { agentId: agent.id, message: msg });
+      } catch {}
+    }
+    setAgents(prev => prev.map(a =>
+      a.status !== 'disconnected' ? { ...a, history: [...a.history, { role: 'user' as const, text: `[God Prompt] ${msg}`, timestamp: Date.now() }] } : a
+    ));
+    setOmnibarText("");
+    setOmnibarOpen(false);
+  }, [agents, omnibarText]);
+
   const handleUpdatePlan = (agentId: string, tasks: AgentPlanTask[]) => {
     setAgents(prev => prev.map(a =>
       a.id === agentId ? { ...a, plan: a.plan ? { ...a.plan, tasks } : a.plan, pinnedWaypoints: tasks } : a
@@ -249,6 +285,14 @@ function App() {
           
           <div className="flex items-center gap-3">
             <button
+              onClick={() => setOmnibarOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-300 text-white/40 hover:text-white/60 text-[12px]"
+            >
+              <Command size={12} />
+              <span>God Prompt</span>
+              <kbd className="ml-1 px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/10 text-[10px] font-mono">⌘K</kbd>
+            </button>
+            <button
               data-testid="spawn-open-btn"
               onClick={() => setIsSpawnModalOpen(true)}
               className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.03] border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-300 text-white/60 hover:text-white group hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]"
@@ -257,6 +301,39 @@ function App() {
             </button>
           </div>
         </header>
+
+        {omnibarOpen && (
+          <div className="absolute inset-0 z-30 flex items-start justify-center pt-24 bg-black/50 backdrop-blur-sm" onClick={() => setOmnibarOpen(false)}>
+            <div className="w-full max-w-2xl mx-8" onClick={e => e.stopPropagation()}>
+              <div className="bg-zinc-900 border border-white/15 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.5)] overflow-hidden">
+                <div className="flex items-center gap-3 p-4 border-b border-white/[0.06]">
+                  <Command size={16} className="text-white/30 shrink-0" />
+                  <input
+                    ref={omnibarRef}
+                    value={omnibarText}
+                    onChange={e => setOmnibarText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleGodPrompt(); }}
+                    placeholder="Send a command to all agents..."
+                    className="flex-1 bg-transparent text-[15px] text-white outline-none placeholder:text-white/20"
+                  />
+                  <button
+                    onClick={handleGodPrompt}
+                    disabled={!omnibarText.trim()}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-white text-black text-[12px] font-bold rounded-xl hover:bg-blue-50 disabled:opacity-30 disabled:hover:bg-white transition-all"
+                  >
+                    <Send size={12} />
+                    Broadcast
+                  </button>
+                </div>
+                <div className="px-4 py-2.5 text-[11px] text-white/30 flex items-center gap-2">
+                  <span>Sends to {agents.filter(a => a.status !== 'disconnected').length} active agent{agents.filter(a => a.status !== 'disconnected').length !== 1 ? 's' : ''}</span>
+                  <span className="text-white/10">·</span>
+                  <span>Esc to close</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {savedSessions.length > 0 && (
           <div className="mx-8 mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-between relative z-10">
