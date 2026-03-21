@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentdance-landing
+  namespace: agentdance
+  labels:
+    app: agentdance-landing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentdance-landing
+  template:
+    metadata:
+      labels:
+        app: agentdance-landing
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      tolerations:
+        - effect: NoSchedule
+          key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+      containers:
+        - name: landing
+          image: us-docker.pkg.dev/baldmaninc/gcr.io/agentdance-landing:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
