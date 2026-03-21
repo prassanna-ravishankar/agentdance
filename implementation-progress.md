@@ -45,8 +45,20 @@
 - Cmd+K opens overlay, broadcasts to all active agents
 - Shows count of active agents, Esc to close
 
+### Shared memory
+- SQLite-backed persistent store with tags and keyword search
+- `write_shared_memory` — agents write findings/decisions/context with tags
+- `read_shared_memory` — search by keyword, filter by tag, or get recent entries
+- Survives app restarts
+
+### Orchestrator capabilities
+- `spawn_sub_agent` — agents can programmatically spawn new agents as sub-tasks
+- Spawn requests handled via Tauri events (backend → frontend → connect_agent)
+- Initial prompt sent to spawned agent after ACP handshake
+
 ### Not yet implemented
 - MCP Bridge (central tool proxy for registered MCP servers)
-- Epistemic Shared Memory (vector search on findings)
+- Vector search on shared memory (currently keyword LIKE search)
 - Visual handoff tethers between communicating agents on Stage
-- Agent-to-agent capability discovery / dynamic sub-contracting
+- Agent groups/circles (like repowire's circles but richer)
+- Remote agent relay for multi-machine orchestration (future)
