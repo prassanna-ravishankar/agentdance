@@ -150,6 +150,19 @@ function App() {
       }));
     }).then(fn => { unlistenComm = fn; }).catch(() => {});
 
+    let unlistenSpawn: (() => void) | undefined;
+    listen<{ name: string; command: string; args: string[]; directory?: string; initial_prompt?: string }>("spawn-agent", async (event) => {
+      const { name, command, args, directory, initial_prompt } = event.payload;
+      try {
+        const agentId = await invoke<string>("connect_agent", { name, command, args, directory: directory || null });
+        if (initial_prompt && agentId) {
+          await invoke("send_agent_input", { agentId, message: initial_prompt });
+        }
+      } catch (e) {
+        console.error("Failed to spawn sub-agent", e);
+      }
+    }).then(fn => { unlistenSpawn = fn; }).catch(() => {});
+
     invoke<SpawnConfig[]>("load_previous_session")
       .then(sessions => { if (sessions.length > 0) setSavedSessions(sessions); })
       .catch(() => {});
@@ -158,6 +171,7 @@ function App() {
       if (unlistenFn) unlistenFn();
       if (unlistenLog) unlistenLog();
       if (unlistenComm) unlistenComm();
+      if (unlistenSpawn) unlistenSpawn();
     };
   }, []);
 

@@ -392,6 +392,30 @@ async fn memory_read(
     }
 }
 
+#[derive(Deserialize)]
+struct SpawnRequest {
+    name: String,
+    command: String,
+    args: Vec<String>,
+    directory: Option<String>,
+    initial_prompt: Option<String>,
+}
+
+async fn spawn_sub_agent(
+    State(state): State<BridgeState>,
+    Json(req): Json<SpawnRequest>,
+) -> Json<serde_json::Value> {
+    // Emit event for frontend to handle the actual spawn
+    let _ = state.app_handle.emit("spawn-agent", serde_json::json!({
+        "name": req.name,
+        "command": req.command,
+        "args": req.args,
+        "directory": req.directory,
+        "initial_prompt": req.initial_prompt,
+    }));
+    Json(serde_json::json!({"success": true, "note": "Spawn request submitted"}))
+}
+
 pub async fn start_bridge_api(state: BridgeState) -> u16 {
     let app = Router::new()
         .route("/agents", get(list_agents))
@@ -401,6 +425,7 @@ pub async fn start_bridge_api(state: BridgeState) -> u16 {
         .route("/broadcast", post(broadcast_to_agents))
         .route("/memory/write", post(memory_write))
         .route("/memory/read", post(memory_read))
+        .route("/spawn", post(spawn_sub_agent))
         .with_state(state);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("Failed to bind bridge API");

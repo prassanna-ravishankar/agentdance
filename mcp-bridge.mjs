@@ -73,6 +73,19 @@ const TOOLS = [
     },
   },
   {
+    name: "spawn_sub_agent",
+    description: "Spawn a new agent as a sub-task. The new agent will be a peer visible to all agents. Use this to delegate work to a specialist. Requires orchestrator role or explicit user approval.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name for the new agent" },
+        directory: { type: "string", description: "Working directory for the agent" },
+        initial_prompt: { type: "string", description: "Initial task/context to send to the new agent after spawn" },
+      },
+      required: ["name", "directory"],
+    },
+  },
+  {
     name: "read_shared_memory",
     description: "Read from shared memory. Can search by keyword, filter by tag, or get recent entries. Returns findings written by any agent.",
     inputSchema: {
@@ -169,6 +182,17 @@ async function handleRequest(msg) {
         result = data.sent_to.length > 0
           ? `Broadcast sent to: ${data.sent_to.join(", ")}`
           : "No other agents to broadcast to";
+      } else if (toolName === "spawn_sub_agent") {
+        const data = await callApi("/spawn", {
+          name: args.name,
+          command: "npx",
+          args: ["@zed-industries/claude-agent-acp"],
+          directory: args.directory,
+          initial_prompt: args.initial_prompt || null,
+        });
+        result = data.success
+          ? `Sub-agent '${args.name}' spawn requested. It will appear as a peer shortly.`
+          : `Failed: ${data.error}`;
       } else if (toolName === "write_shared_memory") {
         const data = await callApi("/memory/write", {
           agent_id: AGENT_ID,
