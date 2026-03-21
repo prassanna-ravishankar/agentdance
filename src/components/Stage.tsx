@@ -5,6 +5,18 @@ import { CheckCircle2, Circle, Loader2, AlertCircle, Radio } from "lucide-react"
 import { cn } from "../lib/cn";
 import { getPlanProgress } from "../lib/planUtils";
 
+function statusBadgeClass(status: string) {
+  if (status === 'busy') return "bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
+  if (status === 'disconnected') return "bg-rose-500/10 text-rose-400 border-rose-500/30";
+  return "bg-white/5 text-white/40 border-white/10";
+}
+
+function statusDotClass(status: string) {
+  if (status === 'busy') return "bg-blue-500";
+  if (status === 'disconnected') return "bg-rose-500";
+  return "bg-white/20";
+}
+
 interface StageProps {
   agents: Agent[];
   selectedId: string | null;
@@ -39,10 +51,10 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-[15px] text-white/90">{agent.name}</h3>
-                    {agent.history.some(h => h.role === 'peer') && (
+                    {agent.peerMessageCount > 0 && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/20 text-purple-300 text-[9px] font-bold">
                         <Radio size={8} />
-                        {agent.history.filter(h => h.role === 'peer').length}
+                        {agent.peerMessageCount}
                       </span>
                     )}
                   </div>
@@ -51,9 +63,7 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
               </div>
               <div className={cn(
                 "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] border backdrop-blur-md",
-                agent.status === 'busy' && "bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]",
-                agent.status === 'disconnected' && "bg-rose-500/10 text-rose-400 border-rose-500/30",
-                agent.status !== 'busy' && agent.status !== 'disconnected' && "bg-white/5 text-white/40 border-white/10"
+                statusBadgeClass(agent.status)
               )}>
                 {agent.status}
               </div>
@@ -90,12 +100,7 @@ export function Stage({ agents, selectedId, onInspectAgent }: StageProps) {
               <span className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
                   {agent.status === 'busy' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>}
-                  <span className={cn(
-                    "relative inline-flex rounded-full h-2 w-2",
-                    agent.status === 'busy' && "bg-blue-500",
-                    agent.status === 'disconnected' && "bg-rose-500",
-                    agent.status !== 'busy' && agent.status !== 'disconnected' && "bg-white/20"
-                  )}></span>
+                  <span className={cn("relative inline-flex rounded-full h-2 w-2", statusDotClass(agent.status))}></span>
                 </span>
                 {agent.lastActive}
               </span>

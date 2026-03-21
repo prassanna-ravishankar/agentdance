@@ -15,10 +15,10 @@ pub struct SpawnConfig {
 }
 
 pub struct ProcessManager {
-    pub inputs: HashMap<String, ChildStdin>,
-    pub session_ids: HashMap<String, String>,
-    pub children: HashMap<String, Child>,
-    pub spawn_configs: HashMap<String, SpawnConfig>,
+    inputs: HashMap<String, ChildStdin>,
+    session_ids: HashMap<String, String>,
+    children: HashMap<String, Child>,
+    spawn_configs: HashMap<String, SpawnConfig>,
 }
 
 impl ProcessManager {

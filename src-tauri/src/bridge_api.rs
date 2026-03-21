@@ -14,6 +14,13 @@ use crate::pending_queries::PendingQueries;
 use crate::process_manager::ProcessManager;
 use crate::registry::AgentRegistry;
 
+fn truncate_utf8(s: &str, max_chars: usize) -> String {
+    match s.char_indices().nth(max_chars) {
+        Some((idx, _)) => format!("{}…", &s[..idx]),
+        None => s.to_string(),
+    }
+}
+
 #[derive(Clone, Serialize)]
 pub struct CommEvent {
     pub from_name: String,
@@ -248,7 +255,7 @@ async fn ask_agent(
                 from_name: req.target_name.clone(), from_id: target_id,
                 to_name: sender_name, to_id: req.from_agent_id,
                 kind: "response".to_string(),
-                message: if response.len() > 200 { format!("{}…", &response[..200]) } else { response.clone() },
+                message: truncate_utf8(&response, 200),
                 timestamp: now_ms(),
             });
             Json(AskResponse { success: true, response: Some(response), error: None })

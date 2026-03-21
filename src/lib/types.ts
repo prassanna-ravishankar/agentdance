@@ -42,4 +42,12 @@ export interface Agent {
   forkOf?: string;
   message?: string;
   history: HistoryEntry[];
+  peerMessageCount: number;
+}
+
+export interface SpawnConfig {
+  name: string;
+  command: string;
+  args: string[];
+  directory: string | null;
 }

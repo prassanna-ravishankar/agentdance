@@ -4,17 +4,25 @@ import { Stage } from "./components/Stage";
 import { AgentInspector } from "./components/AgentInspector";
 import { SpawnModal } from "./components/SpawnModal";
 import { Background } from "./components/Background";
-import { Agent, AgentPlanTask, HistoryEntry, CommEvent } from "./lib/types";
+import { Agent, AgentPlan, AgentPlanTask, HistoryEntry, CommEvent, SpawnConfig } from "./lib/types";
 import { Plus, Terminal, ChevronDown, ChevronUp, RotateCcw, Radio, ArrowRight, Command, Send } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 
-interface SavedSession {
-  name: string;
-  command: string;
-  args: string[];
-  directory: string | null;
+const MAX_HISTORY = 200;
+
+function mapPlanPayload(plan: AgentUpdatePayload['plan']): AgentPlan | undefined {
+  if (!plan) return undefined;
+  return {
+    id: plan.id,
+    agentId: plan.agent_id,
+    title: plan.title,
+    tasks: plan.tasks.map(t => ({
+      ...t,
+      status: (t.status === 'in_progress' ? 'running' : t.status) as AgentPlanTask['status']
+    }))
+  };
 }
 
 interface LogLine {
@@ -46,7 +54,7 @@ function App() {
   const [logsOpen, setLogsOpen] = useState(true);
   const [logTab, setLogTab] = useState<'debug' | 'mesh'>('mesh');
   const [comms, setComms] = useState<CommEvent[]>([]);
-  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+  const [savedSessions, setSavedSessions] = useState<SpawnConfig[]>([]);
   const [omnibarOpen, setOmnibarOpen] = useState(false);
   const [omnibarText, setOmnibarText] = useState("");
   const omnibarRef = useRef<HTMLInputElement>(null);
@@ -80,31 +88,20 @@ function App() {
           const existing = prev.find(a => a.id === payload.id);
           if (existing) {
             return prev.map((agent) => {
-              if (agent.id === payload.id) {
-                // When transitioning to idle with a final message, record it in history
-                const history = [...agent.history];
-                if (payload.status === 'idle' && payload.message) {
-                  history.push({ role: 'agent', text: payload.message, timestamp: Date.now() });
-                }
-                return {
-                  ...agent,
-                  name: payload.name || agent.name,
-                  status: payload.status,
-                  lastActive: "Just now",
-                  message: payload.message !== undefined ? payload.message : agent.message,
-                  history,
-                  plan: payload.plan ? {
-                    id: payload.plan.id,
-                    agentId: payload.plan.agent_id,
-                    title: payload.plan.title,
-                    tasks: payload.plan.tasks.map(t => ({
-                      ...t,
-                      status: (t.status === 'in_progress' ? 'running' : t.status) as AgentPlanTask['status']
-                    }))
-                  } : agent.plan
-                };
+              if (agent.id !== payload.id) return agent;
+              const history = [...agent.history];
+              if (payload.status === 'idle' && payload.message) {
+                history.push({ role: 'agent', text: payload.message, timestamp: Date.now() });
               }
-              return agent;
+              return {
+                ...agent,
+                name: payload.name || agent.name,
+                status: payload.status,
+                lastActive: "Just now",
+                message: payload.message !== undefined ? payload.message : agent.message,
+                history: history.slice(-MAX_HISTORY),
+                plan: mapPlanPayload(payload.plan) ?? agent.plan,
+              };
             });
           } else {
             const parent = prev.find(a => a.id === payload.fork_of);
@@ -117,15 +114,8 @@ function App() {
               forkOf: payload.fork_of,
               message: payload.message,
               history: [],
-              plan: payload.plan ? {
-                id: payload.plan.id,
-                agentId: payload.plan.agent_id,
-                title: payload.plan.title,
-                tasks: payload.plan.tasks.map(t => ({
-                  ...t,
-                  status: (t.status === 'in_progress' ? 'running' : t.status) as AgentPlanTask['status']
-                }))
-              } : undefined
+              peerMessageCount: 0,
+              plan: mapPlanPayload(payload.plan),
             };
             return [...prev, newAgent];
           }
@@ -148,17 +138,19 @@ function App() {
       setComms(prev => [...prev.slice(-200), comm]);
       // Inject into receiving agent's history
       setAgents(prev => prev.map(a => {
-        if (a.id === comm.to_id) {
-          return { ...a, history: [...a.history, {
+        if (a.id !== comm.to_id) return a;
+        return {
+          ...a,
+          peerMessageCount: a.peerMessageCount + 1,
+          history: [...a.history, {
             role: 'peer' as const, text: comm.message, timestamp: comm.timestamp,
             peerName: comm.from_name, commKind: comm.kind,
-          }]};
-        }
-        return a;
+          }].slice(-MAX_HISTORY),
+        };
       }));
     }).then(fn => { unlistenComm = fn; }).catch(() => {});
 
-    invoke<SavedSession[]>("load_previous_session")
+    invoke<SpawnConfig[]>("load_previous_session")
       .then(sessions => { if (sessions.length > 0) setSavedSessions(sessions); })
       .catch(() => {});
 
@@ -211,7 +203,7 @@ function App() {
     try {
       await invoke("send_agent_input", { agentId, message });
       setAgents(prev => prev.map(a =>
-        a.id === agentId ? { ...a, history: [...a.history, { role: 'user' as const, text: message, timestamp: Date.now() }] } : a
+        a.id === agentId ? { ...a, history: [...a.history, { role: 'user' as const, text: message, timestamp: Date.now() }].slice(-MAX_HISTORY) } : a
       ));
     } catch (e) {
       console.error("Failed to send command", e);
@@ -229,9 +221,7 @@ function App() {
   };
 
   const handleRestoreSession = async () => {
-    for (const s of savedSessions) {
-      await handleConnect(s.name, s.command, s.args, s.directory || "");
-    }
+    await Promise.all(savedSessions.map(s => handleConnect(s.name, s.command, s.args, s.directory || "")));
     setSavedSessions([]);
   };
 
@@ -241,13 +231,9 @@ function App() {
     const msg = omnibarText.trim();
     if (!msg) return;
     const running = agents.filter(a => a.status !== 'disconnected');
-    for (const agent of running) {
-      try {
-        await invoke("send_agent_input", { agentId: agent.id, message: msg });
-      } catch {}
-    }
+    await Promise.allSettled(running.map(a => invoke("send_agent_input", { agentId: a.id, message: msg })));
     setAgents(prev => prev.map(a =>
-      a.status !== 'disconnected' ? { ...a, history: [...a.history, { role: 'user' as const, text: `[God Prompt] ${msg}`, timestamp: Date.now() }] } : a
+      a.status !== 'disconnected' ? { ...a, history: [...a.history, { role: 'user' as const, text: `[God Prompt] ${msg}`, timestamp: Date.now() }].slice(-MAX_HISTORY) } : a
     ));
     setOmnibarText("");
     setOmnibarOpen(false);
@@ -326,7 +312,7 @@ function App() {
                   </button>
                 </div>
                 <div className="px-4 py-2.5 text-[11px] text-white/30 flex items-center gap-2">
-                  <span>Sends to {agents.filter(a => a.status !== 'disconnected').length} active agent{agents.filter(a => a.status !== 'disconnected').length !== 1 ? 's' : ''}</span>
+                  {(() => { const n = agents.filter(a => a.status !== 'disconnected').length; return <span>Sends to {n} active agent{n !== 1 ? 's' : ''}</span>; })()}
                   <span className="text-white/10">·</span>
                   <span>Esc to close</span>
                 </div>

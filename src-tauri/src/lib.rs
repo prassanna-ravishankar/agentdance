@@ -22,7 +22,12 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 type SharedAppDataDir = Arc<Mutex<PathBuf>>;
-type SharedBridgePort = Arc<Mutex<u16>>;
+
+struct BridgeConfig {
+    port: u16,
+    script_path: PathBuf,
+}
+type SharedBridgeConfig = Arc<BridgeConfig>;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -64,7 +69,7 @@ async fn connect_agent(
     directory: Option<String>,
     state: tauri::State<'_, SharedProcessManager>,
     registry: tauri::State<'_, SharedAgentRegistry>,
-    bridge_port: tauri::State<'_, SharedBridgePort>,
+    bridge_config: tauri::State<'_, SharedBridgeConfig>,
     pending: tauri::State<'_, SharedPendingQueries>,
 ) -> Result<String, String> {
     let mut cmd = Command::new(&command);
@@ -120,18 +125,6 @@ async fn connect_agent(
     }
 
     // ── Step 2: send newSession with MCP bridge ────────────────────────────
-    let port = *bridge_port.lock().await;
-    // Resolve mcp-bridge.mjs: try relative to exe (dev: target/debug/app → ../../..),
-    // then relative to cwd, then as absolute fallback
-    let bridge_script = [
-        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("../../../mcp-bridge.mjs"))),
-        Some(PathBuf::from("mcp-bridge.mjs")),
-    ]
-    .into_iter()
-    .flatten()
-    .find_map(|p| std::fs::canonicalize(p).ok())
-    .unwrap_or_else(|| PathBuf::from("mcp-bridge.mjs"));
-
     let ns_id = next_id();
     let ns_str = serde_json::to_string(&serde_json::json!({
         "jsonrpc": "2.0",
@@ -141,7 +134,7 @@ async fn connect_agent(
             "mcpServers": [{
                 "name": "agentdance",
                 "command": "node",
-                "args": [bridge_script.to_string_lossy(), port.to_string(), agent_id],
+                "args": [bridge_config.script_path.to_string_lossy(), bridge_config.port.to_string(), agent_id],
             }]
         },
         "id": ns_id
@@ -171,16 +164,18 @@ async fn connect_agent(
         let mut mgr = state.lock().await;
         mgr.register_session_id(agent_id.clone(), session_id);
         mgr.register_stdin(agent_id.clone(), stdin);
+        let dir_opt = if cwd == "." { None } else { Some(cwd.clone()) };
         mgr.register_spawn_config(agent_id.clone(), SpawnConfig {
             name: name.clone(),
             command: command.clone(),
             args: args.clone(),
-            directory: if cwd == "." { None } else { Some(cwd.clone()) },
+            directory: dir_opt.clone(),
         });
     }
     {
+        let dir_opt = if cwd == "." { None } else { Some(cwd) };
         let mut reg = registry.lock().await;
-        reg.register(agent_id.clone(), name.clone(), if cwd == "." { None } else { Some(cwd.clone()) });
+        reg.register(agent_id.clone(), name.clone(), dir_opt);
     }
 
     let _ = handle.emit("agent-update", AgentUpdate {
@@ -449,7 +444,7 @@ async fn fork_session(
     handle: AppHandle,
     state: tauri::State<'_, SharedProcessManager>,
     registry: tauri::State<'_, SharedAgentRegistry>,
-    bridge_port: tauri::State<'_, SharedBridgePort>,
+    bridge_config: tauri::State<'_, SharedBridgeConfig>,
     pending: tauri::State<'_, SharedPendingQueries>,
     agent_id: String,
     context: Option<String>,
@@ -470,7 +465,7 @@ async fn fork_session(
         config.directory,
         state.clone(),
         registry.clone(),
-        bridge_port.clone(),
+        bridge_config.clone(),
         pending.clone(),
     ).await?;
 
@@ -539,7 +534,15 @@ pub fn run() {
                 app_handle: app.handle().clone(),
             };
             let port = tauri::async_runtime::block_on(bridge_api::start_bridge_api(bridge_state));
-            let bridge_port: SharedBridgePort = Arc::new(Mutex::new(port));
+            let script_path = [
+                std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("../../../mcp-bridge.mjs"))),
+                Some(PathBuf::from("mcp-bridge.mjs")),
+            ]
+            .into_iter()
+            .flatten()
+            .find_map(|p| std::fs::canonicalize(p).ok())
+            .unwrap_or_else(|| PathBuf::from("mcp-bridge.mjs"));
+            let bridge_config: SharedBridgeConfig = Arc::new(BridgeConfig { port, script_path });
             log::info!("Bridge API started on port {}", port);
 
             app.manage(memory_manager);
@@ -547,7 +550,7 @@ pub fn run() {
             app.manage(process_manager);
             app.manage(agent_registry);
             app.manage(data_dir);
-            app.manage(bridge_port);
+            app.manage(bridge_config);
             app.manage(pending_queries);
 
             Ok(())
