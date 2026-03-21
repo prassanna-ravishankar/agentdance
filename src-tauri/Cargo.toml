@@ -29,3 +29,5 @@ uuid = { version = "1.20.0", features = ["v4"] }
 rusqlite = "0.38.0"
 jsonrpsee = { version = "0.24.10", features = ["full"] }
 tauri-plugin-webdriver = "0.2"
+axum = "0.8"
+tower = "0.5"

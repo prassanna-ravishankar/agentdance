@@ -1,10 +1,14 @@
+mod bridge_api;
 mod mcp_host;
 mod memory;
 mod process_manager;
+mod registry;
 
 use mcp_host::{McpRegistry, SharedMcpRegistry, McpTool};
 use memory::{MemoryManager, SharedMemoryManager, Finding};
+use bridge_api::BridgeState;
 use process_manager::{ProcessManager, SharedProcessManager, SpawnConfig};
+use registry::{AgentRegistry, SharedAgentRegistry};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use std::sync::Arc;
@@ -16,10 +20,11 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 type SharedAppDataDir = Arc<Mutex<PathBuf>>;
+type SharedBridgePort = Arc<Mutex<u16>>;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
-fn next_id() -> u64 {
+pub fn next_id() -> u64 {
     REQUEST_ID.fetch_add(1, Ordering::SeqCst)
 }
 
@@ -55,7 +60,9 @@ async fn connect_agent(
     command: String,
     args: Vec<String>,
     directory: Option<String>,
-    state: tauri::State<'_, SharedProcessManager>
+    state: tauri::State<'_, SharedProcessManager>,
+    registry: tauri::State<'_, SharedAgentRegistry>,
+    bridge_port: tauri::State<'_, SharedBridgePort>,
 ) -> Result<String, String> {
     let mut cmd = Command::new(&command);
     cmd.args(&args);
@@ -109,12 +116,26 @@ async fn connect_agent(
         }
     }
 
-    // ── Step 2: send newSession, wait for its response ───────────────────────
+    // ── Step 2: send newSession with MCP bridge ────────────────────────────
+    let port = *bridge_port.lock().await;
+    let bridge_script = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("../../../mcp-bridge.mjs")))
+        .and_then(|p| std::fs::canonicalize(p).ok())
+        .unwrap_or_else(|| PathBuf::from("mcp-bridge.mjs"));
+
     let ns_id = next_id();
     let ns_str = serde_json::to_string(&serde_json::json!({
         "jsonrpc": "2.0",
         "method": "session/new",
-        "params": { "cwd": cwd, "mcpServers": [] },
+        "params": {
+            "cwd": cwd,
+            "mcpServers": [{
+                "name": "agentdance",
+                "command": "node",
+                "args": [bridge_script.to_string_lossy(), port.to_string(), agent_id],
+            }]
+        },
         "id": ns_id
     })).unwrap();
     let _ = handle.emit("agent-log", serde_json::json!({"agent_id": agent_id, "stream": "stdin", "line": ns_str}));
@@ -149,6 +170,10 @@ async fn connect_agent(
             directory: if cwd == "." { None } else { Some(cwd.clone()) },
         });
     }
+    {
+        let mut reg = registry.lock().await;
+        reg.register(agent_id.clone(), name.clone(), if cwd == "." { None } else { Some(cwd.clone()) });
+    }
 
     let _ = handle.emit("agent-update", AgentUpdate {
         id: agent_id.clone(),
@@ -162,6 +187,7 @@ async fn connect_agent(
     let id_clone = agent_id.clone();
     let handle_clone = handle.clone();
     let state_clone = state.inner().clone();
+    let registry_clone = registry.inner().clone();
 
     let id_for_stderr = agent_id.clone();
     let handle_for_stderr = handle.clone();
@@ -179,6 +205,7 @@ async fn connect_agent(
     tauri::async_runtime::spawn(async move {
         let mut message_buf = String::new();
         let pm = state_clone;
+        let reg = registry_clone;
 
         while let Ok(Some(line)) = reader.next_line().await {
             let _ = handle_clone.emit("agent-log", serde_json::json!({
@@ -198,10 +225,12 @@ async fn connect_agent(
                     // Schedule idle after 200ms — enough time for any trailing chunks
                     let h = handle_clone.clone();
                     let id = id_clone.clone();
+                    let reg2 = reg.clone();
                     let msg = if message_buf.is_empty() { None } else { Some(message_buf.clone()) };
                     message_buf.clear();
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        reg2.lock().await.update_status(&id, "idle");
                         let _ = h.emit("agent-update", AgentUpdate {
                             id,
                             name: None,
@@ -234,6 +263,7 @@ async fn connect_agent(
 
             // Notification: {method:"session/update", params:{sessionId, update:{sessionUpdate,...}}}
             if json.get("method").and_then(|m| m.as_str()) == Some("session/update") {
+                reg.lock().await.update_status(&id_clone, "busy");
                 let update = json.get("params").and_then(|p| p.get("update"));
 
                 let session_update_type = update
@@ -303,9 +333,11 @@ async fn connect_agent(
             fork_of: None,
             message: None,
         });
-        // Clean up process manager entries
+        // Clean up process manager + registry entries
         let mut mgr = pm.lock().await;
         let _ = mgr.kill_agent(&id_clone).await;
+        drop(mgr);
+        reg.lock().await.remove(&id_clone);
     });
 
     Ok(agent_id)
@@ -378,10 +410,14 @@ async fn load_previous_session(
 async fn stop_agent(
     handle: AppHandle,
     state: tauri::State<'_, SharedProcessManager>,
+    registry: tauri::State<'_, SharedAgentRegistry>,
     agent_id: String,
 ) -> Result<(), String> {
     let mut mgr = state.lock().await;
     mgr.kill_agent(&agent_id).await?;
+    drop(mgr);
+    let mut reg = registry.lock().await;
+    reg.remove(&agent_id);
     let _ = handle.emit("agent-update", AgentUpdate {
         id: agent_id,
         name: None,
@@ -397,6 +433,8 @@ async fn stop_agent(
 async fn fork_session(
     handle: AppHandle,
     state: tauri::State<'_, SharedProcessManager>,
+    registry: tauri::State<'_, SharedAgentRegistry>,
+    bridge_port: tauri::State<'_, SharedBridgePort>,
     agent_id: String,
     context: Option<String>,
 ) -> Result<String, String> {
@@ -415,6 +453,8 @@ async fn fork_session(
         config.args,
         config.directory,
         state.clone(),
+        registry.clone(),
+        bridge_port.clone(),
     ).await?;
 
     // Send context prompt to the forked agent so it picks up where the parent was
@@ -469,13 +509,25 @@ pub fn run() {
 
             let memory_manager = Arc::new(Mutex::new(MemoryManager::new(app_data_dir.clone()).expect("Failed to init memory")));
             let mcp_registry = Arc::new(Mutex::new(McpRegistry::new()));
-            let process_manager = Arc::new(Mutex::new(ProcessManager::new()));
+            let process_manager: SharedProcessManager = Arc::new(Mutex::new(ProcessManager::new()));
+            let agent_registry: SharedAgentRegistry = Arc::new(Mutex::new(AgentRegistry::new()));
             let data_dir: SharedAppDataDir = Arc::new(Mutex::new(app_data_dir));
+
+            // Start bridge HTTP API for inter-agent communication
+            let bridge_state = BridgeState {
+                registry: agent_registry.clone(),
+                process_manager: process_manager.clone(),
+            };
+            let port = tauri::async_runtime::block_on(bridge_api::start_bridge_api(bridge_state));
+            let bridge_port: SharedBridgePort = Arc::new(Mutex::new(port));
+            log::info!("Bridge API started on port {}", port);
 
             app.manage(memory_manager);
             app.manage(mcp_registry);
             app.manage(process_manager);
+            app.manage(agent_registry);
             app.manage(data_dir);
+            app.manage(bridge_port);
 
             Ok(())
         })
