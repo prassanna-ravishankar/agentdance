@@ -582,14 +582,9 @@ pub fn run() {
                 app_handle: app.handle().clone(),
             };
             let port = tauri::async_runtime::block_on(bridge_api::start_bridge_api(bridge_state));
-            let script_path = [
-                std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("../../../mcp-bridge.mjs"))),
-                Some(PathBuf::from("mcp-bridge.mjs")),
-            ]
-            .into_iter()
-            .flatten()
-            .find_map(|p| std::fs::canonicalize(p).ok())
-            .unwrap_or_else(|| PathBuf::from("mcp-bridge.mjs"));
+            let script_path = app.path().resource_dir()
+                .map(|d| d.join("mcp-bridge.mjs"))
+                .unwrap_or_else(|_| PathBuf::from("mcp-bridge.mjs"));
             let bridge_config: SharedBridgeConfig = Arc::new(BridgeConfig { port, script_path });
             log::info!("Bridge API started on port {}", port);
 
