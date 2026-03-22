@@ -1,0 +1,36 @@
+replicaCount: 1
+
+image:
+  repository: us-docker.pkg.dev/baldmaninc/gcr.io/agentdance-landing
+  tag: latest
+  pullPolicy: Always
+
+service:
+  port: 80
+  targetPort: 80
+
+resources:
+  requests:
+    memory: "16Mi"
+    cpu: "10m"
+  limits:
+    memory: "32Mi"
+    cpu: "50m"
+
+nodeSelector:
+  cloud.google.com/gke-spot: "true"
+
+tolerations:
+  - effect: NoSchedule
+    key: cloud.google.com/gke-spot
+    operator: Equal
+    value: "true"
+
+httpRoute:
+  enabled: true
+  hostnames:
+    - agentdance.ai
+  gatewayNamespace: clusterkit
+  gatewayName: clusterkit-gateway
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"

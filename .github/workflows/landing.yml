@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'landing/**'
+      - 'charts/agentdance-landing/**'
 
 env:
   IMAGE: us-docker.pkg.dev/baldmaninc/gcr.io/agentdance-landing
@@ -38,7 +39,13 @@ jobs:
           docker push $IMAGE:${{ github.sha }}
           docker push $IMAGE:latest
 
-      - name: Deploy to GKE
+      - name: Get GKE credentials
+        run: gcloud container clusters get-credentials $GKE_CLUSTER --region $GKE_REGION
+
+      - name: Deploy with Helm
         run: |
-          gcloud container clusters get-credentials $GKE_CLUSTER --region $GKE_REGION
-          kubectl set image deployment/agentdance-landing landing=$IMAGE:${{ github.sha }} -n agentdance
+          helm upgrade --install agentdance-landing charts/agentdance-landing \
+            --namespace agentdance \
+            --set image.tag=${{ github.sha }} \
+            --set image.repository=$IMAGE
+          kubectl rollout status deployment/agentdance-landing -n agentdance --timeout=120s

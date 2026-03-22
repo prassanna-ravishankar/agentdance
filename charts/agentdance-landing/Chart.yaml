@@ -1,0 +1,6 @@
+apiVersion: v2
+name: agentdance-landing
+description: Landing page for agentdance.ai
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
