@@ -124,7 +124,31 @@ async fn connect_agent(
         }
     }
 
-    // ── Step 2: send newSession with MCP bridge ────────────────────────────
+    // ── Step 2: send newSession with MCP bridge + collaboration context ───
+    let peer_context = {
+        let reg = registry.lock().await;
+        let peers = reg.list();
+        if peers.is_empty() {
+            "You are the first agent in this session.".to_string()
+        } else {
+            let list: Vec<String> = peers.iter()
+                .map(|a| format!("- {} ({})", a.name, a.directory.as_deref().unwrap_or("-")))
+                .collect();
+            format!("Other agents already running:\n{}", list.join("\n"))
+        }
+    };
+
+    let system_append = format!(
+        "You are part of an agentdance ensemble. You have collaboration tools via the 'agentdance' MCP server:\n\
+         - list_agents: see who else is running\n\
+         - set_description: label what you're working on (call this early)\n\
+         - notify_agent/ask_agent/broadcast: communicate with peers\n\
+         - write_shared_memory/read_shared_memory: share findings persistently\n\n\
+         {}\n\n\
+         Call set_description right away so other agents know what you're doing.",
+        peer_context
+    );
+
     let ns_id = next_id();
     let ns_str = serde_json::to_string(&serde_json::json!({
         "jsonrpc": "2.0",
@@ -135,7 +159,16 @@ async fn connect_agent(
                 "name": "agentdance",
                 "command": "node",
                 "args": [bridge_config.script_path.to_string_lossy(), bridge_config.port.to_string(), agent_id],
-            }]
+            }],
+            "_meta": {
+                "claudeCode": {
+                    "options": {
+                        "systemPrompt": {
+                            "append": system_append
+                        }
+                    }
+                }
+            }
         },
         "id": ns_id
     })).unwrap();
