@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Zap, FolderOpen, ArrowRight, Sparkles, Users, MessageSquare } from "lucide-react";
+import { Zap, FolderOpen, ArrowRight, Sparkles, Users, MessageSquare, Crown } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface WelcomeScreenProps {
   onSpawn: (name: string, command: string, args: string[], directory: string, initialTask?: string) => Promise<void>;
+  onStartEnsemble: (directory: string, task: string, workerCount?: number) => Promise<void>;
 }
 
-export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
-  const [step, setStep] = useState<'welcome' | 'pick-dir'>('welcome');
+export function WelcomeScreen({ onSpawn, onStartEnsemble }: WelcomeScreenProps) {
+  const [step, setStep] = useState<'welcome' | 'pick-dir' | 'ensemble'>('welcome');
   const [directory, setDirectory] = useState("");
   const [task, setTask] = useState("");
   const [spawning, setSpawning] = useState(false);
@@ -24,6 +25,93 @@ export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
       setSpawning(false);
     }
   };
+
+  const handleEnsemble = async () => {
+    if (!directory || !task) return;
+    setSpawning(true);
+    try {
+      await onStartEnsemble(directory, task, 2);
+    } finally {
+      setSpawning(false);
+    }
+  };
+
+  if (step === 'ensemble') {
+    return (
+      <div className="flex-1 flex items-center justify-center p-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-lg w-full space-y-8"
+        >
+          <div className="text-center space-y-3">
+            <motion.div
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center"
+            >
+              <Crown className="text-amber-400" size={28} />
+            </motion.div>
+            <h2 className="text-2xl font-bold text-white/90">Start an Ensemble</h2>
+            <p className="text-[14px] text-white/40">An orchestrator agent will coordinate 2 worker agents on your task.</p>
+          </div>
+
+          <div className="relative flex items-center">
+            <input
+              value={directory}
+              onChange={e => setDirectory(e.target.value)}
+              placeholder="/path/to/your/project"
+              className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-4 pl-5 pr-24 text-[15px] text-white focus:outline-none focus:ring-1 focus:ring-amber-500/50 transition-all"
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={async () => {
+                const path = await invoke<string | null>('pick_directory');
+                if (path) setDirectory(path);
+              }}
+              className="absolute right-2 px-4 py-2 text-[12px] font-semibold text-white/50 hover:text-white bg-white/[0.05] hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+            >
+              Browse
+            </button>
+          </div>
+
+          <textarea
+            value={task}
+            onChange={e => setTask(e.target.value)}
+            placeholder="Describe the task for the ensemble..."
+            rows={3}
+            className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-3.5 px-5 text-[15px] text-white focus:outline-none focus:ring-1 focus:ring-amber-500/50 transition-all resize-none placeholder:text-white/20"
+          />
+
+          <button
+            onClick={handleEnsemble}
+            disabled={!directory || !task || spawning}
+            className="w-full py-4 bg-amber-500 text-black font-bold rounded-2xl hover:bg-amber-400 transition-all shadow-lg active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-3 text-[15px]"
+          >
+            {spawning ? (
+              <>
+                <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                Spawning ensemble...
+              </>
+            ) : (
+              <>
+                <Crown size={18} />
+                Launch 1 Orchestrator + 2 Workers
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => setStep('welcome')}
+            className="w-full text-center text-[13px] text-white/30 hover:text-white/50 transition-colors"
+          >
+            Back
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (step === 'pick-dir') {
     return (
@@ -160,14 +248,24 @@ export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
           transition={{ delay: 0.8 }}
           className="flex justify-center"
         >
-          <button
-            onClick={handleQuickStart}
-            className="flex items-center gap-3 px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-blue-50 transition-all shadow-[0_0_30px_rgba(255,255,255,0.15)] hover:shadow-[0_0_40px_rgba(255,255,255,0.25)] hover:-translate-y-0.5 active:translate-y-0 text-[15px]"
-          >
-            <Zap size={18} />
-            Spawn Your First Agent
-            <ArrowRight size={16} />
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <button
+              onClick={handleQuickStart}
+              className="flex items-center gap-3 px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-blue-50 transition-all shadow-[0_0_30px_rgba(255,255,255,0.15)] hover:shadow-[0_0_40px_rgba(255,255,255,0.25)] hover:-translate-y-0.5 active:translate-y-0 text-[15px]"
+            >
+              <Zap size={18} />
+              Single Agent
+              <ArrowRight size={16} />
+            </button>
+            <button
+              onClick={() => setStep('ensemble')}
+              className="flex items-center gap-3 px-8 py-4 bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold rounded-2xl hover:bg-amber-500/20 transition-all hover:-translate-y-0.5 active:translate-y-0 text-[15px]"
+            >
+              <Crown size={18} />
+              Start Ensemble
+              <ArrowRight size={16} />
+            </button>
+          </div>
         </motion.div>
 
         <motion.p

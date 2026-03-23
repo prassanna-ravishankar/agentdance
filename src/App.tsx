@@ -208,6 +208,33 @@ function App() {
     }
   };
 
+  const handleStartEnsemble = async (directory: string, task: string, workerCount: number = 1) => {
+    const orchId = await invoke<string>("connect_agent", {
+      name: "Orchestrator",
+      command: "npx",
+      args: ["@zed-industries/claude-agent-acp"],
+      directory: directory || null,
+    });
+    if (orchId) {
+      await invoke("set_orchestrator", { agentId: orchId });
+      const workerNames = workerCount === 1 ? ["Worker"] : Array.from({ length: workerCount }, (_, i) => `Worker ${i + 1}`);
+      for (const name of workerNames) {
+        await invoke<string>("connect_agent", {
+          name,
+          command: "npx",
+          args: ["@zed-industries/claude-agent-acp"],
+          directory: directory || null,
+        });
+      }
+      if (task) {
+        await invoke("send_agent_input", { agentId: orchId, message: task });
+        setAgents(prev => prev.map(a =>
+          a.id === orchId ? { ...a, history: [...a.history, { role: 'user' as const, text: task, timestamp: Date.now() }] } : a
+        ));
+      }
+    }
+  };
+
   const handleFork = async (agentId: string) => {
     try {
       const agent = agents.find(a => a.id === agentId);
@@ -384,7 +411,7 @@ function App() {
 
         <div className="flex-1 overflow-auto relative z-0">
           {agents.length === 0 && savedSessions.length === 0 ? (
-            <WelcomeScreen onSpawn={handleConnect} />
+            <WelcomeScreen onSpawn={handleConnect} onStartEnsemble={handleStartEnsemble} />
           ) : (
             <Stage
               agents={agents}
