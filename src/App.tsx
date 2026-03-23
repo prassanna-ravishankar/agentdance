@@ -188,14 +188,20 @@ function App() {
     if (logsOpen && logTab === 'mesh') commsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, comms, logsOpen, logTab]);
 
-  const handleConnect = async (name: string, command: string, args: string[], directory: string) => {
+  const handleConnect = async (name: string, command: string, args: string[], directory: string, initialTask?: string) => {
     try {
-      await invoke("connect_agent", { 
-        name, 
-        command, 
+      const agentId = await invoke<string>("connect_agent", {
+        name,
+        command,
         args,
         directory: directory || null
       });
+      if (initialTask && agentId) {
+        await invoke("send_agent_input", { agentId, message: initialTask });
+        setAgents(prev => prev.map(a =>
+          a.id === agentId ? { ...a, history: [...a.history, { role: 'user' as const, text: initialTask, timestamp: Date.now() }] } : a
+        ));
+      }
       setIsSpawnModalOpen(false);
     } catch (e) {
       console.error("Failed to connect agent", e);

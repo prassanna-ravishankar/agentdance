@@ -5,11 +5,12 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface SpawnModalProps {
   onClose: () => void;
-  onConnect: (name: string, command: string, args: string[], directory: string) => Promise<void>;
+  onConnect: (name: string, command: string, args: string[], directory: string, initialTask?: string) => Promise<void>;
 }
 
 export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
   const [directory, setDirectory] = useState("");
+  const [task, setTask] = useState("");
   const [selectedAgent, setSelectedAgent] = useState("claude");
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +24,7 @@ export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
     const agent = agents.find(a => a.id === selectedAgent);
     if (agent && directory) {
       setLoading(true);
-      await onConnect(agent.name, agent.command, agent.args, directory);
+      await onConnect(agent.name, agent.command, agent.args, directory, task || undefined);
       setLoading(false);
     }
   };
@@ -93,6 +94,17 @@ export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
               </button>
             </div>
             <p className="text-[10px] text-white/20 ml-1">Enter the absolute path or use Browse to pick a folder.</p>
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-[11px] font-bold text-white/30 uppercase tracking-widest ml-1">Initial Task (Optional)</label>
+            <textarea
+              value={task}
+              onChange={e => setTask(e.target.value)}
+              placeholder="What should this agent work on?"
+              rows={2}
+              className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-3 px-4 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all resize-none placeholder:text-white/20"
+            />
           </div>
 
           <button

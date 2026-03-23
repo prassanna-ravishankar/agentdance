@@ -4,12 +4,13 @@ import { Zap, FolderOpen, ArrowRight, Sparkles, Users, MessageSquare } from "luc
 import { invoke } from "@tauri-apps/api/core";
 
 interface WelcomeScreenProps {
-  onSpawn: (name: string, command: string, args: string[], directory: string) => Promise<void>;
+  onSpawn: (name: string, command: string, args: string[], directory: string, initialTask?: string) => Promise<void>;
 }
 
 export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
   const [step, setStep] = useState<'welcome' | 'pick-dir'>('welcome');
   const [directory, setDirectory] = useState("");
+  const [task, setTask] = useState("");
   const [spawning, setSpawning] = useState(false);
 
   const handleQuickStart = () => setStep('pick-dir');
@@ -18,7 +19,7 @@ export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
     if (!directory) return;
     setSpawning(true);
     try {
-      await onSpawn("Claude Code", "npx", ["@zed-industries/claude-agent-acp"], directory);
+      await onSpawn("Claude Code", "npx", ["@zed-industries/claude-agent-acp"], directory, task || undefined);
     } finally {
       setSpawning(false);
     }
@@ -64,6 +65,14 @@ export function WelcomeScreen({ onSpawn }: WelcomeScreenProps) {
                 Browse
               </button>
           </div>
+
+          <textarea
+            value={task}
+            onChange={e => setTask(e.target.value)}
+            placeholder="What should the agent work on? (optional)"
+            rows={2}
+            className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-3.5 px-5 text-[15px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all resize-none placeholder:text-white/20"
+          />
 
           <button
             onClick={handleSpawn}
