@@ -156,9 +156,11 @@ async fn connect_agent(
         "params": {
             "cwd": cwd,
             "mcpServers": [{
+                "type": "stdio",
                 "name": "agentdance",
                 "command": "node",
                 "args": [bridge_config.script_path.to_string_lossy(), bridge_config.port.to_string(), agent_id],
+                "env": [],
             }],
             "_meta": {
                 "claudeCode": {
