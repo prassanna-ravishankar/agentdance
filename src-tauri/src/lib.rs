@@ -267,37 +267,9 @@ async fn connect_agent(
                 Err(_) => continue,
             };
 
-            // Response to a prompt request
-            if json.get("id").is_some() {
-                if json.get("result").and_then(|r| r.get("stopReason")).is_some() {
-                    // Schedule idle after 200ms — enough time for any trailing chunks
-                    let h = handle_clone.clone();
-                    let id = id_clone.clone();
-                    let reg2 = reg.clone();
-                    let pq2 = pq.clone();
-                    let msg = if message_buf.is_empty() { None } else { Some(message_buf.clone()) };
-                    message_buf.clear();
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                        reg2.lock().await.update_status(&id, "idle");
-                        // Resolve any pending synchronous query
-                        if let Some(ref response_text) = msg {
-                            pq2.lock().await.resolve(&id, response_text.clone());
-                        }
-                        let _ = h.emit("agent-update", AgentUpdate {
-                            id,
-                            name: None,
-                            status: "idle".to_string(),
-                            plan: None,
-                            fork_of: None,
-                            message: msg,
-                        });
-                    });
-                }
-                continue;
-            }
-
             // Permission request: auto-approve with allow_always
+            // Must be checked before the id-based response handler since permission
+            // requests are JSON-RPC requests (have both method and id)
             if json.get("method").and_then(|m| m.as_str()) == Some("session/request_permission") {
                 let req_id = json.get("id").cloned().unwrap_or(serde_json::Value::Null);
                 let response = serde_json::json!({
@@ -311,6 +283,34 @@ async fn connect_agent(
                 }));
                 let mut mgr = pm.lock().await;
                 let _ = mgr.send_input(id_clone.clone(), response_str).await;
+                continue;
+            }
+
+            // Response to a prompt request (has id but no method)
+            if json.get("id").is_some() && json.get("method").is_none() {
+                if json.get("result").and_then(|r| r.get("stopReason")).is_some() {
+                    let h = handle_clone.clone();
+                    let id = id_clone.clone();
+                    let reg2 = reg.clone();
+                    let pq2 = pq.clone();
+                    let msg = if message_buf.is_empty() { None } else { Some(message_buf.clone()) };
+                    message_buf.clear();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        reg2.lock().await.update_status(&id, "idle");
+                        if let Some(ref response_text) = msg {
+                            pq2.lock().await.resolve(&id, response_text.clone());
+                        }
+                        let _ = h.emit("agent-update", AgentUpdate {
+                            id,
+                            name: None,
+                            status: "idle".to_string(),
+                            plan: None,
+                            fork_of: None,
+                            message: msg,
+                        });
+                    });
+                }
                 continue;
             }
 
