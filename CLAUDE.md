@@ -74,7 +74,7 @@ Node.js MCP stdio server bundled as a Tauri resource. Passed to each agent in `s
 ## External Docs
 
 - ACP Protocol: https://agentclientprotocol.com
-- Claude Code ACP adapter: https://github.com/zed-industries/claude-agent-acp
+- Claude Code ACP adapter: https://github.com/zed-industries/claude-agent-acp (npm: `@agentclientprotocol/claude-agent-acp`)
 - MCP Protocol: https://modelcontextprotocol.io
 - Tauri v2: https://v2.tauri.app
 - Axum: https://docs.rs/axum/latest/axum/

@@ -15,7 +15,7 @@ export function SpawnModal({ onClose, onConnect }: SpawnModalProps) {
   const [loading, setLoading] = useState(false);
 
   const agents = [
-    { id: "claude", name: "Claude Code", command: "npx", args: ["@zed-industries/claude-agent-acp"], icon: <Zap className="text-blue-400" size={18} /> },
+    { id: "claude", name: "Claude Code", command: "npx", args: ["@agentclientprotocol/claude-agent-acp"], icon: <Zap className="text-blue-400" size={18} /> },
     { id: "opencode", name: "OpenCode", command: "opencode", args: ["acp"], icon: <Terminal className="text-emerald-400" size={18} /> }
   ];
 

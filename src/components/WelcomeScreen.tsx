@@ -20,7 +20,7 @@ export function WelcomeScreen({ onSpawn, onStartEnsemble }: WelcomeScreenProps) 
     if (!directory) return;
     setSpawning(true);
     try {
-      await onSpawn("Claude Code", "npx", ["@zed-industries/claude-agent-acp"], directory, task || undefined);
+      await onSpawn("Claude Code", "npx", ["@agentclientprotocol/claude-agent-acp"], directory, task || undefined);
     } finally {
       setSpawning(false);
     }

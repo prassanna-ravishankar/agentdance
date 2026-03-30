@@ -33,6 +33,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@agentclientprotocol/claude-agent-acp": "^0.24.2",
     "@tailwindcss/postcss": "^4.2.1",
     "@tailwindcss/vite": "^4.2.1",
     "@types/react": "^19.2.14",
@@ -42,8 +43,6 @@
     "@wdio/local-runner": "^9.24.0",
     "@wdio/mocha-framework": "^9.24.0",
     "@wdio/spec-reporter": "^9.24.0",
-    "@zed-industries/claude-agent-acp": "^0.19.2",
-    "@zed-industries/claude-code-acp": "^0.16.2",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.2.1",

@@ -212,7 +212,7 @@ function App() {
     const orchId = await invoke<string>("connect_agent", {
       name: "Orchestrator",
       command: "npx",
-      args: ["@zed-industries/claude-agent-acp"],
+      args: ["@agentclientprotocol/claude-agent-acp"],
       directory: directory || null,
     });
     if (orchId) {
@@ -222,7 +222,7 @@ function App() {
         await invoke<string>("connect_agent", {
           name,
           command: "npx",
-          args: ["@zed-industries/claude-agent-acp"],
+          args: ["@agentclientprotocol/claude-agent-acp"],
           directory: directory || null,
         });
       }
